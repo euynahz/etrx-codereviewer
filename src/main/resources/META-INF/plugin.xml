@@ -1,0 +1,81 @@
+<idea-plugin>
+    <id>com.etrx.codereviewer</id>
+    <name>ETRX Code Reviewer</name>
+    <vendor email="support@etrx.com" url="https://etrx.com">ETRX</vendor>
+
+    <description><![CDATA[
+    AI-powered code review plugin for JetBrains IDEs.
+    
+    Features:
+    - AI code review with customizable prompts
+    - Support for Ollama models (default: qwen3:8b)
+    - Markdown result display
+    - Integration with VCS commit panel
+    - Configurable AI model settings
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.vcs</depends>
+    <depends>Git4Idea</depends>
+
+    <resource-bundle>messages.CodeReviewerBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Application Settings -->
+        <applicationConfigurable 
+            parentId="tools" 
+            instance="com.etrx.codereviewer.ui.CodeReviewerConfigurable"
+            id="com.etrx.codereviewer.settings"
+            displayName="Code Reviewer"/>
+        
+        <!-- Application Service -->
+        <applicationService 
+            serviceImplementation="com.etrx.codereviewer.service.CodeReviewerSettingsService"/>
+        
+        <!-- Project Service -->
+        <projectService 
+            serviceImplementation="com.etrx.codereviewer.service.OllamaReviewService"/>
+    </extensions>
+
+    <actions>
+        <!-- VCS Actions Group -->
+        <group id="CodeReviewer.VcsActions" text="Code Reviewer" popup="true">
+            <action 
+                id="CodeReviewer.ReviewSelectedChanges"
+                class="com.etrx.codereviewer.action.ReviewSelectedChangesAction"
+                text="Review Selected Changes"
+                description="Review selected changes with AI">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+            </action>
+            <action 
+                id="CodeReviewer.ReviewAllChanges"
+                class="com.etrx.codereviewer.action.ReviewAllChangesAction"
+                text="Review All Changes"
+                description="Review all changes with AI">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift R"/>
+            </action>
+            <add-to-group group-id="Vcs.Operations.Popup" anchor="after" relative-to-action="ChangesView.Diff"/>
+        </group>
+
+        <!-- Editor Context Menu -->
+        <action 
+            id="CodeReviewer.ReviewCode"
+            class="com.etrx.codereviewer.action.ReviewCodeAction"
+            text="Review Code with AI"
+            description="Review selected code with AI">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
+        <!-- VCS Commit Panel Action -->
+        <action 
+            id="CodeReviewer.VcsCommitReview"
+            class="com.etrx.codereviewer.action.VcsCommitReviewAction"
+            text="Review with AI"
+            description="Review code changes with AI before committing"
+            icon="AllIcons.Actions.Preview">
+            <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
+            <add-to-group group-id="Vcs.Operations.Popup" anchor="first"/>
+        </action>
+    </actions>
+
+</idea-plugin>
