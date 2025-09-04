@@ -5,7 +5,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.intellij.ide.ui.LafManager
+import com.intellij.ui.JBColor
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import org.commonmark.ext.gfm.tables.TablesExtension
@@ -157,7 +157,7 @@ class MarkdownViewer {
         val htmlBody = renderer.render(document)
         
         // Get IDE theme colors
-        val isDarkTheme = UIUtil.isUnderDarcula()
+        val isDarkTheme = JBColor.isBright() == false
         val backgroundColor = UIUtil.getPanelBackground()
         val textColor = UIUtil.getLabelForeground()
         val borderColor = UIUtil.getBoundsColor()
@@ -282,6 +282,17 @@ class MarkdownViewer {
      */
     private fun colorToHex(color: Color): String {
         return String.format("#%02x%02x%02x", color.red, color.green, color.blue)
+    }
+    
+    /**
+     * Clean up resources when the viewer is no longer needed
+     */
+    fun dispose() {
+        try {
+            browser?.dispose()
+        } catch (e: Exception) {
+            // Ignore disposal errors
+        }
     }
     
     fun getComponent(): JComponent = mainPanel

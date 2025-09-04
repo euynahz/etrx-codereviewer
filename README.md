@@ -41,7 +41,11 @@ A JetBrains plugin for AI-powered code review using Ollama models.
 ### Review Code in Editor
 1. Select code in the editor
 2. Right-click and select "Review Code with AI"
-3. View results in a popup dialog with formatted markdown content
+3. View results in a popup dialog with **beautiful native Markdown rendering** including:
+   - Syntax-highlighted code blocks
+   - Properly formatted tables and lists
+   - Rich typography with JetBrains native styling
+   - Full GitHub Flavored Markdown support
 
 ## Default Configuration
 
