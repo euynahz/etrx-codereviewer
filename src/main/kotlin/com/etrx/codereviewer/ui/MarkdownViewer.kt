@@ -2,6 +2,7 @@ package com.etrx.codereviewer.ui
 
 import com.etrx.codereviewer.model.ReviewResult
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.ide.ui.LafManager
@@ -62,7 +63,7 @@ class MarkdownViewer {
                 mainPanel.add(browser.component, BorderLayout.CENTER)
             }
             textPane != null -> {
-                val scrollPane = JScrollPane(textPane).apply {
+                val scrollPane = JBScrollPane(textPane).apply {
                     border = null
                 }
                 mainPanel.add(scrollPane, BorderLayout.CENTER)

@@ -5,10 +5,13 @@ import com.etrx.codereviewer.model.PromptTemplate
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import kotlinx.coroutines.runBlocking
@@ -20,6 +23,7 @@ import javax.swing.*
  */
 class CodeReviewerConfigurable : Configurable {
 
+    private val logger = Logger.getInstance(CodeReviewerConfigurable::class.java)
     private val settingsService = CodeReviewerSettingsService.getInstance()
     private var mainPanel: JPanel? = null
 
@@ -45,13 +49,11 @@ class CodeReviewerConfigurable : Configurable {
 
         val aiConfigPanel = createAIConfigPanel()
         val promptConfigPanel = createPromptConfigPanel()
-        val testPanel = createTestPanel()
 
         mainPanel = JPanel(BorderLayout()).apply {
             val tabPane = JTabbedPane()
             tabPane.addTab("AI Configuration", aiConfigPanel)
             tabPane.addTab("Prompt Templates", promptConfigPanel)
-            tabPane.addTab("Connection Test", testPanel)
             add(tabPane, BorderLayout.CENTER)
         }
 
@@ -78,6 +80,24 @@ class CodeReviewerConfigurable : Configurable {
                 }
             }
             add(endpointResetBtn, BorderLayout.EAST)
+        }
+
+        // Setup connection test panel
+        val testButton = JButton("Test Connection").apply {
+            addActionListener { testConnection() }
+        }
+        val testResultArea = JTextArea(3, 50).apply {
+            isEditable = false
+            text = "Click 'Test Connection' to verify AI service connectivity."
+            lineWrap = true
+            wrapStyleWord = true
+        }
+        val testScrollPane = JScrollPane(testResultArea)
+        
+        val testPanel = JPanel(BorderLayout()).apply {
+            add(testButton, BorderLayout.NORTH)
+            add(testScrollPane, BorderLayout.CENTER)
+            putClientProperty("testResultArea", testResultArea)
         }
 
         // Setup API path panel with reset button
@@ -145,8 +165,9 @@ class CodeReviewerConfigurable : Configurable {
         }
 
         return FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("Model Name:"), modelPanel)
             .addLabeledComponent(JBLabel("Endpoint URL:"), endpointPanel)
+            .addLabeledComponent(JBLabel("Connection Test:"), testPanel)
+            .addLabeledComponent(JBLabel("Model Name:"), modelPanel)
             .addLabeledComponent(JBLabel("API Path:"), apiPathPanel)
             .addLabeledComponent(JBLabel("Temperature:"), temperaturePanel)
             .addLabeledComponent(JBLabel("Max Tokens:"), maxTokensPanel)
@@ -181,7 +202,7 @@ class CodeReviewerConfigurable : Configurable {
 
         customPromptArea.lineWrap = true
         customPromptArea.wrapStyleWord = true
-        val scrollPane = JScrollPane(customPromptArea)
+        val scrollPane = JBScrollPane(customPromptArea)
 
         val addTemplateButton = JButton("Add Custom Template").apply {
             addActionListener { showAddTemplateDialog() }
@@ -204,38 +225,19 @@ class CodeReviewerConfigurable : Configurable {
             .panel
     }
 
-    private fun createTestPanel(): JPanel {
-        val testButton = JButton("Test Connection").apply {
-            addActionListener { testConnection() }
-        }
-
-        val testResultArea = JTextArea(5, 50).apply {
-            isEditable = false
-            text = "Click 'Test Connection' to verify AI service connectivity."
-        }
-
-        return FormBuilder.createFormBuilder()
-            .addComponent(testButton)
-            .addLabeledComponent(JBLabel("Test Results:"), JScrollPane(testResultArea))
-            .addComponentFillVertically(JPanel(), 0)
-            .panel.apply {
-                putClientProperty("testResultArea", testResultArea)
-            }
-    }
-
     private fun initializeFields() {
         val config = settingsService.getAIModelConfig()
 
-        // Initialize model combo
-        refreshModelList()
-        modelNameCombo.selectedItem = config.modelName
-
+        // Set other fields first
         endpointField.text = config.endpoint
         apiPathField.text = config.apiPath
         temperatureSpinner.value = config.temperature
         maxTokensSpinner.value = config.maxTokens
         timeoutSpinner.value = config.timeout
         retryCountSpinner.value = config.retryCount
+
+        // Initialize model combo with saved selection
+        refreshModelList(config.modelName)
 
         updatePromptTemplateCombo()
     }
@@ -255,41 +257,48 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun showAddTemplateDialog() {
-        val nameField = JBTextField()
-        val descField = JBTextField()
-        val templateArea = JTextArea(8, 40)
-        templateArea.lineWrap = true
-        templateArea.wrapStyleWord = true
+        val dialog = AddTemplateDialog()
+        if (dialog.showAndGet()) {
+            val name = dialog.templateName.trim()
+            val description = dialog.templateDescription.trim()
+            val template = dialog.templateContent.trim()
 
-        val panel = FormBuilder.createFormBuilder()
-            .addLabeledComponent("Template Name:", nameField)
-            .addLabeledComponent("Description:", descField)
-            .addLabeledComponent("Template Content:", JScrollPane(templateArea))
-            .panel
-
-        val result = Messages.showOkCancelDialog(
-            panel, "Add Custom Template", "Add Template",
-            Messages.getQuestionIcon()
-        )
-
-        if (result == Messages.OK) {
-            val name = nameField.text.trim()
-            val description = descField.text.trim()
-            val template = templateArea.text.trim()
-
-            if (name.isNotEmpty() && template.isNotEmpty() &&
-                template.contains(PromptTemplate.CODE_PLACEHOLDER)
-            ) {
-
-                val newTemplate = PromptTemplate(name, template, description)
-                settingsService.addCustomPromptTemplate(newTemplate)
-                updatePromptTemplateCombo()
-                promptTemplateCombo.selectedItem = newTemplate
-            } else {
-                Messages.showErrorDialog(
-                    "Please provide a name, template content, and ensure the template contains {code} placeholder.",
-                    "Invalid Template"
-                )
+            when {
+                name.isEmpty() -> {
+                    Messages.showErrorDialog(
+                        "Template name is required. Please provide a unique name for your template.",
+                        "Missing Template Name"
+                    )
+                }
+                template.isEmpty() -> {
+                    Messages.showErrorDialog(
+                        "Template content is required. Please provide the template content.",
+                        "Missing Template Content"
+                    )
+                }
+                !template.contains(PromptTemplate.CODE_PLACEHOLDER) -> {
+                    Messages.showErrorDialog(
+                        "Template must contain {code} placeholder where the code will be inserted.\n\nExample: \"Please review the following code: {code}\"",
+                        "Missing Code Placeholder"
+                    )
+                }
+                settingsService.getAvailablePromptTemplates().any { it.name == name } -> {
+                    Messages.showErrorDialog(
+                        "A template with name '$name' already exists. Please choose a different name.",
+                        "Duplicate Template Name"
+                    )
+                }
+                else -> {
+                    val newTemplate = PromptTemplate(name, template, description)
+                    settingsService.addCustomPromptTemplate(newTemplate)
+                    updatePromptTemplateCombo()
+                    promptTemplateCombo.selectedItem = newTemplate
+                    
+                    Messages.showInfoMessage(
+                        "Custom template '$name' has been added successfully.",
+                        "Template Added"
+                    )
+                }
             }
         }
     }
@@ -321,29 +330,94 @@ class CodeReviewerConfigurable : Configurable {
 
         testResultArea?.text = "Testing connection..."
 
-        ProgressManager.getInstance().runProcessWithProgressSynchronously({
-            val tempConfig = getCurrentConfig()
-            settingsService.updateAIModelConfig(tempConfig)
+        try {
+            ProgressManager.getInstance().runProcessWithProgressSynchronously({
+                val progressIndicator = ProgressManager.getInstance().progressIndicator
+                val startTime = System.currentTimeMillis()
+                
+                val tempConfig = getCurrentConfig()
+                logger.info("=== 配置界面连接测试开始 ===")
+                logger.info("测试配置详情:")
+                logger.info("  - Endpoint: ${tempConfig.endpoint}")
+                logger.info("  - API Path: ${tempConfig.apiPath}")
+                logger.info("  - Full URL: ${tempConfig.getFullUrl()}")
+                logger.info("  - Model: ${tempConfig.modelName}")
+                logger.info("  - Timeout: ${tempConfig.timeout}ms")
+                logger.info("  - Temperature: ${tempConfig.temperature}")
+                logger.info("  - Max Tokens: ${tempConfig.maxTokens}")
+                logger.info("  - Retry Count: ${tempConfig.retryCount}")
+                
+                settingsService.updateAIModelConfig(tempConfig)
 
-            val reviewService = OllamaReviewService()
+                val reviewService = OllamaReviewService()
 
-            val result = runBlocking {
-                reviewService.testConnection()
-            }
-
-            SwingUtilities.invokeLater {
-                testResultArea?.text = if (result) {
-                    "✓ Connection successful! AI service is reachable."
-                } else {
-                    "✗ Connection failed. Please check your configuration."
+                val result = runBlocking {
+                    if (progressIndicator?.isCanceled == true) {
+                        logger.info("用户在测试开始前取消了连接测试")
+                        return@runBlocking false
+                    }
+                    
+                    logger.info("开始执行连接测试...")
+                    val testResult = reviewService.testConnection()
+                    
+                    if (progressIndicator?.isCanceled == true) {
+                        logger.info("用户在测试过程中取消了连接测试")
+                        return@runBlocking false
+                    }
+                    
+                    testResult
                 }
+
+                val totalTime = System.currentTimeMillis() - startTime
+
+                SwingUtilities.invokeLater {
+                    testResultArea?.text = if (progressIndicator?.isCanceled == true) {
+                        logger.info("配置界面显示: 连接测试已取消")
+                        "❌ Connection test was cancelled."
+                    } else if (result) {
+                        logger.info("配置界面连接测试成功 - 总耗时: ${totalTime}ms")
+                        "✓ Connection successful! AI service is reachable."
+                    } else {
+                        logger.info("配置界面连接测试失败 - 总耗时: ${totalTime}ms")
+                        "✗ Connection failed. Please check your configuration."
+                    }
+                }
+                
+                logger.info("=== 配置界面连接测试结束 ===\n")
+            }, "Testing AI Service Connection", true, null)
+                } catch (e: Exception) {
+            // Handle cancellation or other exceptions
+            logger.error("配置界面连接测试发生异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}", e)
+            
+            SwingUtilities.invokeLater {
+                testResultArea?.text = "❌ Connection test was cancelled or failed."
             }
-        }, "Testing AI Service Connection", false, null)
+            
+            logger.info("=== 配置界面连接测试异常结束 ===\n")
+        }
     }
 
     private fun findTestPanel(): JPanel? {
         return mainPanel?.let { panel ->
-            (panel.getComponent(0) as? JTabbedPane)?.getComponentAt(2) as? JPanel
+            // Find the test panel in the AI Configuration tab
+            val tabPane = panel.getComponent(0) as? JTabbedPane
+            val aiConfigPanel = tabPane?.getComponentAt(0) as? JPanel
+            
+            // Search for the test panel by its client property
+            fun findPanelWithProperty(component: java.awt.Component?): JPanel? {
+                if (component is JPanel && component.getClientProperty("testResultArea") != null) {
+                    return component
+                }
+                if (component is java.awt.Container) {
+                    for (child in component.components) {
+                        val result = findPanelWithProperty(child)
+                        if (result != null) return result
+                    }
+                }
+                return null
+            }
+            
+            findPanelWithProperty(aiConfigPanel)
         }
     }
 
@@ -392,13 +466,19 @@ class CodeReviewerConfigurable : Configurable {
         initializeFields()
     }
 
-    private fun refreshModelList() {
+    private fun refreshModelList(preselectedModel: String? = null) {
         refreshModelsButton.isEnabled = false
         refreshModelsButton.text = "Loading..."
 
         ApplicationManager.getApplication().executeOnPooledThread {
+            val startTime = System.currentTimeMillis()
+            
             try {
                 val config = getCurrentConfig()
+                logger.info("=== 配置界面刷新模型列表开始 ===")
+                logger.info("刷新配置 - Endpoint: ${config.endpoint}, API: ${config.apiPath}")
+                logger.info("预选模型: ${preselectedModel ?: "无"}")
+                
                 val tempService = OllamaReviewService()
                 tempService.updateModelConfig(config)
 
@@ -406,8 +486,12 @@ class CodeReviewerConfigurable : Configurable {
                     tempService.getAvailableModels()
                 }
 
+                val totalTime = System.currentTimeMillis() - startTime
+                logger.info("刷新模型列表成功 - 获取到 ${models.size} 个模型，耗时: ${totalTime}ms")
+                logger.info("模型列表: ${models.joinToString(", ")}")
+
                 SwingUtilities.invokeLater {
-                    val currentSelection = modelNameCombo.selectedItem as? String
+                    val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
                     modelNameCombo.removeAllItems()
 
                     models.forEach { model ->
@@ -417,14 +501,24 @@ class CodeReviewerConfigurable : Configurable {
                     // Restore selection or set default
                     if (currentSelection != null && models.contains(currentSelection)) {
                         modelNameCombo.selectedItem = currentSelection
+                        logger.info("恢复模型选择: $currentSelection")
                     } else if (models.isNotEmpty()) {
                         modelNameCombo.selectedItem = models.first()
+                        logger.info("设置默认模型: ${models.first()}")
                     }
 
                     refreshModelsButton.isEnabled = true
                     refreshModelsButton.text = "Refresh"
+                    
+                    logger.info("模型下拉框更新完成")
                 }
+                
+                logger.info("=== 配置界面刷新模型列表完成 ===\n")
             } catch (e: Exception) {
+                val totalTime = System.currentTimeMillis() - startTime
+                
+                logger.info("刷新模型列表异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}, 耗时: ${totalTime}ms")
+                
                 SwingUtilities.invokeLater {
                     // Fallback to default models
                     val defaultModels = listOf(
@@ -432,7 +526,7 @@ class CodeReviewerConfigurable : Configurable {
                         "codellama:7b", "codellama:13b", "mistral:7b", "deepseek-coder:6.7b"
                     )
 
-                    val currentSelection = modelNameCombo.selectedItem as? String
+                    val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
                     modelNameCombo.removeAllItems()
 
                     defaultModels.forEach { model ->
@@ -441,13 +535,19 @@ class CodeReviewerConfigurable : Configurable {
 
                     if (currentSelection != null && defaultModels.contains(currentSelection)) {
                         modelNameCombo.selectedItem = currentSelection
+                        logger.info("使用默认模型列表，恢复选择: $currentSelection")
                     } else {
                         modelNameCombo.selectedItem = "qwen3:8b"
+                        logger.info("使用默认模型列表，设置默认选择: qwen3:8b")
                     }
 
                     refreshModelsButton.isEnabled = true
                     refreshModelsButton.text = "Refresh"
+                    
+                    logger.info("已降级到默认模型列表: ${defaultModels.joinToString(", ")}")
                 }
+                
+                logger.error("=== 配置界面刷新模型列表异常结束 ===\n")
             }
         }
     }
@@ -487,4 +587,68 @@ class CodeReviewerConfigurable : Configurable {
             )
         }
     }
+}
+
+/**
+ * Dialog for adding custom templates
+ */
+private class AddTemplateDialog : DialogWrapper(true) {
+    
+    private val nameField = JBTextField(20).apply {
+        toolTipText = "Enter a unique name for your custom template"
+    }
+    
+    private val descField = JBTextField(30).apply {
+        toolTipText = "Optional: Brief description of what this template does"
+    }
+    
+    private val templateArea = JTextArea(12, 60).apply {
+        lineWrap = true
+        wrapStyleWord = true
+        toolTipText = "Template content must include {code} placeholder where the code will be inserted"
+        text = """请对以下代码进行评审：
+
+## 📝 评审总结
+[简短总结]
+
+## 🔍 发现的问题
+[列出问题或写"未发现明显问题"]
+
+## 💡 优化建议
+[具体建议或写"代码质量良好"]
+
+代码内容：
+{code}"""
+    }
+    
+    val templateName: String get() = nameField.text
+    val templateDescription: String get() = descField.text  
+    val templateContent: String get() = templateArea.text
+    
+    init {
+        title = "Add Custom Template"
+        init()
+    }
+    
+    override fun createCenterPanel(): JComponent {
+        val scrollPane = JBScrollPane(templateArea).apply {
+            preferredSize = java.awt.Dimension(600, 300)
+        }
+
+        val panel = FormBuilder.createFormBuilder()
+            .addLabeledComponent("Template Name*:", nameField)
+            .addLabeledComponent("Description:", descField)
+            .addLabeledComponent("Template Content*:", scrollPane)
+            .panel
+
+        val instructionLabel = JLabel("<html><font color='gray'><i>* Required fields. Template must contain {code} placeholder.</i></font></html>")
+        
+        return JPanel(BorderLayout()).apply {
+            add(panel, BorderLayout.CENTER)
+            add(instructionLabel, BorderLayout.SOUTH)
+            border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        }
+    }
+    
+    override fun getPreferredFocusedComponent(): JComponent = nameField
 }

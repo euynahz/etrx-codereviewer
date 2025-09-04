@@ -9,7 +9,7 @@ data class AIModelConfig(
     val apiPath: String = "/api/generate",
     val temperature: Double = 0.7,
     val maxTokens: Int = 2048,
-    val timeout: Int = 30000, // milliseconds
+    val timeout: Int = 30000, // milliseconds (2 minutes)
     val retryCount: Int = 3
 ) {
     fun getFullUrl(): String = "${endpoint.trimEnd('/')}${apiPath}"

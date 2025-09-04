@@ -1,0 +1,27 @@
+{
+  "name": "nodejs-ai-review-example",
+  "version": "1.0.0",
+  "description": "Node.js AI代码评审示例项目，使用ETRX插件的默认配置",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "ai",
+    "code-review",
+    "ollama",
+    "etrx"
+  ],
+  "author": "ETRX CodeReviewer",
+  "license": "MIT"
+}

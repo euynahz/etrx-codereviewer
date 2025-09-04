@@ -21,9 +21,7 @@ data class CodeReviewerState(
     var aiTimeout: Int = 30000,
     var aiRetryCount: Int = 3,
     var selectedPromptTemplate: String = "简洁代码评审",
-    var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
-    var enableContentExtraction: Boolean = true,
-    var debugMode: Boolean = false
+    var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf()
 )
 
 /**
@@ -145,22 +143,7 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     fun setSelectedPromptTemplate(templateName: String) {
         state.selectedPromptTemplate = templateName
     }
-    
-    fun isContentExtractionEnabled(): Boolean {
-        return state.enableContentExtraction
-    }
-    
-    fun setContentExtractionEnabled(enabled: Boolean) {
-        state.enableContentExtraction = enabled
-    }
-    
-    fun isDebugModeEnabled(): Boolean {
-        return state.debugMode
-    }
-    
-    fun setDebugModeEnabled(enabled: Boolean) {
-        state.debugMode = enabled
-    }
+
     
     private fun initializeDefaultTemplates() {
         if (state.customPromptTemplates.isEmpty()) {
