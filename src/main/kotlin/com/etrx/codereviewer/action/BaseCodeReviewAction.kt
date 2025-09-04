@@ -53,20 +53,21 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         logger.info("模板描述: ${promptTemplate.description}")
         
         ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project, "AI Code Review in Progress", true
+            project, "AI Code Review (${promptTemplate.name})", true
         ) {
             override fun run(indicator: ProgressIndicator) {
                 val taskStartTime = System.currentTimeMillis()
                 
                 try {
                     logger.info("开始执行代码评审任务...")
-                    indicator.text = "Starting code review..."
+                    indicator.text = "Starting code review with template: ${promptTemplate.name}..."
                     indicator.fraction = 0.0
                     
                     val result = runBlocking {
                         reviewService.reviewCode(
                             codeChanges = codeChanges,
                             prompt = promptTemplate.template,
+                            templateName = promptTemplate.name,
                             progressIndicator = indicator
                         )
                     }

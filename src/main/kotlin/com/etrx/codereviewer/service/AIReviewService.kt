@@ -14,12 +14,14 @@ interface AIReviewService {
      * Review code changes using AI
      * @param codeChanges List of code changes to review
      * @param prompt The prompt template to use
+     * @param templateName Name of the template being used
      * @param progressIndicator Progress indicator for UI feedback
      * @return ReviewResult containing the AI's feedback
      */
     suspend fun reviewCode(
         codeChanges: List<CodeChange>,
         prompt: String,
+        templateName: String = "Default",
         progressIndicator: ProgressIndicator? = null
     ): ReviewResult
     

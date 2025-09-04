@@ -47,6 +47,7 @@ class OllamaReviewService : AIReviewService {
     override suspend fun reviewCode(
         codeChanges: List<CodeChange>,
         prompt: String,
+        templateName: String,
         progressIndicator: ProgressIndicator?
     ): ReviewResult = withContext(Dispatchers.IO) {
         
@@ -61,7 +62,7 @@ class OllamaReviewService : AIReviewService {
             logger.info("请求参数 - Temperature: ${config.temperature}, MaxTokens: ${config.maxTokens}")
             logger.info("代码变更数量: ${codeChanges.size}")
             
-            progressIndicator?.text = "Preparing code for review..."
+            progressIndicator?.text = "[${templateName}] Preparing code for review..."
             progressIndicator?.fraction = 0.1
             
             val codeContent = buildCodeContent(codeChanges)
@@ -71,7 +72,7 @@ class OllamaReviewService : AIReviewService {
             logger.info("完整提示词长度: ${fullPrompt.length} 字符")
             logger.info("AI请求URL: ${config.getFullUrl()}")
             
-            progressIndicator?.text = "Sending request to AI service..."
+            progressIndicator?.text = "[${templateName}] Sending request to AI service..."
             progressIndicator?.fraction = 0.3
             
             val ollamaRequest = OllamaRequest(
@@ -90,7 +91,7 @@ class OllamaReviewService : AIReviewService {
             
             val response = sendOllamaRequest(ollamaRequest, config)
             
-            progressIndicator?.text = "Processing AI response..."
+            progressIndicator?.text = "[${templateName}] Processing AI response..."
             progressIndicator?.fraction = 0.8
             
             if (response.isSuccessful) {
