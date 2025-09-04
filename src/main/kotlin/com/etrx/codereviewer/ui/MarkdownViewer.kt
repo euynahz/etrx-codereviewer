@@ -6,6 +6,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBScrollBar
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import org.commonmark.ext.gfm.tables.TablesExtension
@@ -13,6 +14,7 @@ import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.autolink.AutolinkExtension
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Dimension
 import javax.swing.*
 
 /**
@@ -63,9 +65,7 @@ class MarkdownViewer {
                 mainPanel.add(browser.component, BorderLayout.CENTER)
             }
             textPane != null -> {
-                val scrollPane = JBScrollPane(textPane).apply {
-                    border = null
-                }
+                val scrollPane = createStyledScrollPane(textPane)
                 mainPanel.add(scrollPane, BorderLayout.CENTER)
             }
             else -> {
@@ -73,6 +73,49 @@ class MarkdownViewer {
                 mainPanel.add(fallbackLabel, BorderLayout.CENTER)
             }
         }
+    }
+    
+    /**
+     * Create a styled scroll pane with IDE-consistent scrollbars
+     */
+    private fun createStyledScrollPane(component: JComponent): JBScrollPane {
+        val scrollPane = JBScrollPane(component)
+        
+        // Remove default border
+        scrollPane.border = null
+        
+        // Set viewport border for better visual separation
+        scrollPane.viewportBorder = JBUI.Borders.empty()
+        
+        // Configure scrollbar policies
+        scrollPane.horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        scrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
+        
+        // Use custom styled scrollbars
+        scrollPane.verticalScrollBar = createStyledScrollBar(JScrollBar.VERTICAL)
+        scrollPane.horizontalScrollBar = createStyledScrollBar(JScrollBar.HORIZONTAL)
+        
+        // Smooth scrolling
+        scrollPane.verticalScrollBar.unitIncrement = 16
+        scrollPane.horizontalScrollBar.unitIncrement = 16
+        
+        return scrollPane
+    }
+    
+    /**
+     * Create a styled scrollbar that matches IDE theme
+     */
+    private fun createStyledScrollBar(orientation: Int): JBScrollBar {
+        val scrollBar = JBScrollBar(orientation)
+        
+        // Make scrollbar thinner and more modern
+        if (orientation == JScrollBar.VERTICAL) {
+            scrollBar.preferredSize = Dimension(12, scrollBar.preferredSize.height)
+        } else {
+            scrollBar.preferredSize = Dimension(scrollBar.preferredSize.width, 12)
+        }
+        
+        return scrollBar
     }
     
     fun displayResult(result: ReviewResult) {
@@ -194,6 +237,37 @@ class MarkdownViewer {
             <head>
                 <meta charset="UTF-8">
                 <style>
+                    /* Custom scrollbar styles for webkit browsers */
+                    ::-webkit-scrollbar {
+                        width: 12px;
+                        height: 12px;
+                    }
+                    
+                    ::-webkit-scrollbar-track {
+                        background: $bgHex;
+                        border-radius: 6px;
+                    }
+                    
+                    ::-webkit-scrollbar-thumb {
+                        background: $borderHex;
+                        border-radius: 6px;
+                        border: 2px solid $bgHex;
+                    }
+                    
+                    ::-webkit-scrollbar-thumb:hover {
+                        background: $textHex;
+                    }
+                    
+                    ::-webkit-scrollbar-corner {
+                        background: $bgHex;
+                    }
+                    
+                    /* Firefox scrollbar styles */
+                    * {
+                        scrollbar-width: thin;
+                        scrollbar-color: $borderHex $bgHex;
+                    }
+                    
                     body {
                         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                         line-height: 1.6;
@@ -202,6 +276,8 @@ class MarkdownViewer {
                         margin: 0;
                         padding: 16px;
                         background: $bgHex;
+                        /* Smooth scrolling */
+                        scroll-behavior: smooth;
                     }
                     h1, h2, h3, h4, h5, h6 {
                         color: $headingColor;
