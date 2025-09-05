@@ -21,9 +21,11 @@ import java.util.concurrent.TimeUnit
 @Service(Service.Level.PROJECT)
 class OllamaReviewService : AIReviewService {
 
-    protected val SYSTEM_PROMPT = """**【重要系统要求】：**
-        1. 请务必使用中文回复，所有内容都必须是中文。
-        2. 不要返回思考过程。
+    protected val SYSTEM_PROMPT = """**【！！！重要系统要求！！！】：**
+        1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+        2. **不要返回思考过程。**
+    现在，根据上述要求完成下面的任务。
+    
 """.trimIndent()
     
     private val logger = Logger.getInstance(OllamaReviewService::class.java)
@@ -70,7 +72,7 @@ class OllamaReviewService : AIReviewService {
             
             val codeContent = buildCodeContent(codeChanges)
             var fullPrompt = prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)
-            fullPrompt = "${SYSTEM_PROMPT}\n${fullPrompt}"
+            fullPrompt = "${SYSTEM_PROMPT}\n${fullPrompt}\n${SYSTEM_PROMPT}"
             
             logger.info("代码内容长度: ${codeContent.length} 字符")
             logger.info("完整提示词长度: ${fullPrompt.length} 字符")

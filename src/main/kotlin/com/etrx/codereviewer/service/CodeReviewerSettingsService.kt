@@ -18,7 +18,7 @@ data class CodeReviewerState(
     var aiEndpoint: String = "http://192.168.66.181:11434",
     var aiApiPath: String = "/api/generate",
     var aiTemperature: Double = 0.7,
-    var aiMaxTokens: Int = 2048,
+    var aiMaxTokens: Int = 20480,
     var aiTimeout: Int = 300000, // 减少超时时间到30秒
     var aiRetryCount: Int = 3,
     var selectedPromptTemplate: String = "简洁代码评审",
@@ -153,6 +153,24 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     
     fun removeCustomPromptTemplate(templateName: String) {
         state.customPromptTemplates.removeIf { it.name == templateName }
+    }
+    
+    /**
+     * 更新已存在的自定义提示词模板
+     */
+    fun updateCustomPromptTemplate(template: PromptTemplate) {
+        logger.info("更新自定义模板: ${template.name}")
+        val existingTemplate = state.customPromptTemplates.find { it.name == template.name }
+        if (existingTemplate != null) {
+            // 更新现有模板
+            existingTemplate.template = template.template
+            existingTemplate.description = template.description
+            logger.info("模板更新完成: ${template.name}")
+        } else {
+            // 如果不存在，则添加为新模板
+            logger.warn("模板不存在，添加为新模板: ${template.name}")
+            addCustomPromptTemplate(template)
+        }
     }
     
     fun getSelectedPromptTemplate(): PromptTemplate {

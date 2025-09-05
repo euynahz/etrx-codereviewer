@@ -107,10 +107,10 @@ class ReviewResultFileService {
         val configuredPath = settingsService.getReviewResultFilePath()
         logger.info("开始解析文件路径 - 配置路径: '$configuredPath'")
         
-        // 生成日期格式化的文件名
-        val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        val currentDate = LocalDateTime.now().format(dateTimeFormatter)
-        val fileName = "ai-code-review-$currentDate.md"
+        // 生成日期时间格式化的文件名（精确到分钟）
+        val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm")
+        val currentDateTime = LocalDateTime.now().format(dateTimeFormatter)
+        val fileName = "ai-code-review-$currentDateTime.md"
         
         val resolvedPath = if (Paths.get(configuredPath).isAbsolute) {
             // Absolute path

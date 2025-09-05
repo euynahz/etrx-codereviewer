@@ -41,7 +41,9 @@ data class PromptTemplate(
 [优化后的代码示例]
 
 代码变更：
-$CODE_PLACEHOLDER""",
+```
+$CODE_PLACEHOLDER
+```""",
             description = "快速简洁的代码评审，专注关键问题",
             isDefault = true
         )
@@ -67,7 +69,9 @@ $CODE_PLACEHOLDER""",
 
 
 代码变更：
-$CODE_PLACEHOLDER""",
+```
+$CODE_PLACEHOLDER
+```""",
             description = "传统详细的代码评审，适合需要全面分析的场景"
         )
 
@@ -107,7 +111,9 @@ $CODE_PLACEHOLDER""",
 [优化后的代码示例]
 
 代码变更如下：
-$CODE_PLACEHOLDER""",
+```
+$CODE_PLACEHOLDER
+```""",
             description = "后端代码评审"
         )
 
@@ -146,7 +152,9 @@ $CODE_PLACEHOLDER""",
 
 
 代码变更如下：
-$CODE_PLACEHOLDER""",
+```
+$CODE_PLACEHOLDER
+```""",
             description = "前端代码评审"
         )
 
@@ -185,7 +193,9 @@ $CODE_PLACEHOLDER""",
 [优化后的文档示例]
 
 代码变更如下：
-$CODE_PLACEHOLDER""",
+```
+$CODE_PLACEHOLDER
+```""",
             description = "开发手册评审"
         )
 
