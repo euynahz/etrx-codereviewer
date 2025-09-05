@@ -21,7 +21,7 @@ class VcsCommitReviewAction : BaseCodeReviewAction() {
     private val logger = Logger.getInstance(VcsCommitReviewAction::class.java)
     
     init {
-        templatePresentation.text = "Review with AI"
+        templatePresentation.text = "AI 代码评审；按住 Shift 选中文件可以发起部分文件评审"
         templatePresentation.description = "Review code changes with AI before committing"
         templatePresentation.icon = AllIcons.Actions.IntentionBulb
     }
