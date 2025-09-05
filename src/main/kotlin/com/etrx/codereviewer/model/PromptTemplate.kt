@@ -34,7 +34,7 @@ data class PromptTemplate(
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
 ### 问题标题
-[问题详解与优化建议]
+[问题详解、影响与优化建议]
 
 ## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
@@ -59,7 +59,7 @@ $CODE_PLACEHOLDER""",
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
 ### 问题标题
-[问题详解与优化建议]
+[问题详解、影响与优化建议]
 
 ## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
@@ -100,7 +100,7 @@ $CODE_PLACEHOLDER""",
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
 ### 问题标题
-[问题详解与优化建议]
+[问题详解、影响与优化建议]
 
 ## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
@@ -138,7 +138,7 @@ $CODE_PLACEHOLDER""",
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
 ### 问题标题
-[问题详解与优化建议]
+[问题详解、影响与优化建议]
 
 ## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
@@ -178,7 +178,7 @@ $CODE_PLACEHOLDER""",
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
 ### 问题标题
-[问题详解与优化建议]
+[问题详解、影响与优化建议]
 
 ## 💡 优化后的文档示例
 [针对问题的建议总结，没有则写"代码质量良好"]
@@ -195,17 +195,33 @@ $CODE_PLACEHOLDER""",
         fun processAIResponse(response: String): String {
             var processedResponse = response
 
-            // 首先移除think标签及其内容 (例如</think>...</think>)
+            // 处理原始的</think>和</think>标签及其内容
+            val xmlThinkPattern = Regex("[\\n\\s]*?<[tT][hH][iI][nN][kK]>.*?</[tT][hH][iI][nN][kK]>", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = xmlThinkPattern.replace(processedResponse, "")
+
+            // 处理HTML实体编码的</think>和</think>标签及其内容
+            val encodedXmlThinkPattern = Regex("[\\n\\s]*?&lt;[tT][hH][iI][nN][kK]&gt;.*?&lt;/[tT][hH][iI][nN][kK]&gt;", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = encodedXmlThinkPattern.replace(processedResponse, "")
+
+            // 处理带code fence的think标签 (例如```think...```)
             val thinkPattern = Regex("[\\n\\s]*?```[tT][hH][iI][nN][kK]\\n.*?```", RegexOption.DOT_MATCHES_ALL)
             processedResponse = thinkPattern.replace(processedResponse, "")
             
-            // 也处理没有code fence的think标签格式 (例如</think>...</think>)
+            // 处理没有换行的think标签格式 (例如```think...```)
             val simpleThinkPattern = Regex("[\\n\\s]*?```[tT][hH][iI][nN][kK].*?```", RegexOption.DOT_MATCHES_ALL)
             processedResponse = simpleThinkPattern.replace(processedResponse, "")
             
-            // 处理简单的</think>标签格式
-            val angleThinkPattern = Regex("[\\n\\s]*?\\{\\{\\{[tT][hH][iI][nN][kK]\\}\\}\\}\n.*?\\{\\{\\{\\/[tT][hH][iI][nN][kK]\\}\\}\\}", RegexOption.DOT_MATCHES_ALL)
+            // 处理带有大括号的think标签格式 (例如\{\{\{think\}\}\}\n...\{\{\{/think\}\}\})
+            val angleThinkPattern = Regex("[\\n\\s]*?\\{\\{\\{[tT][hH][iI][nN][kK]\\}\\}\\}\\n.*?\\{\\{\\{\\/[tT][hH][iI][nN][kK]\\}\\}\\}", RegexOption.DOT_MATCHES_ALL)
             processedResponse = angleThinkPattern.replace(processedResponse, "")
+            
+            // 处理带有大括号的标签格式 (例如\{\{\{\\n...\}\}\})
+            val angleBracketThinkPattern = Regex("[\\n\\s]*?\\{\\{\\{\\n.*?\\}\\}\\}", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = angleBracketThinkPattern.replace(processedResponse, "")
+            
+            // 处理更简单的大括号标签格式 (例如\{\{\{.*?\}\}\})
+            val simpleAngleBracketThinkPattern = Regex("[\\n\\s]*?\\{\\{\\{.*?\\}\\}\\}", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = simpleAngleBracketThinkPattern.replace(processedResponse, "")
 
             return processedResponse.trim()
         }

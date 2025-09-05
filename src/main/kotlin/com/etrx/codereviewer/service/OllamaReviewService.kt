@@ -87,6 +87,20 @@ class OllamaReviewService : AIReviewService {
             var response: Response? = null
 
             for (attempt in 1..config.retryCount.coerceAtLeast(1)) {
+                // 检查是否已取消
+                if (progressIndicator?.isCanceled == true) {
+                    logger.info("AI代码评审请求已取消")
+                    return@withContext ReviewResult(
+                        id = reviewId,
+                        reviewContent = "",
+                        modelUsed = config.modelName,
+                        promptTemplate = prompt,
+                        codeChanges = codeChanges,
+                        status = ReviewResult.ReviewStatus.CANCELLED,
+                        errorMessage = "Code review was cancelled by user"
+                    )
+                }
+                
                 try {
                     var retryText = ""
 

@@ -1,6 +1,7 @@
 package com.etrx.codereviewer.action
 
 import com.etrx.codereviewer.model.CodeChange
+import com.etrx.codereviewer.model.ReviewResult
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
 import com.etrx.codereviewer.service.ReviewResultFileService
@@ -65,6 +66,8 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
                     indicator.text = "Starting code review with template: ${promptTemplate.name}..."
                     indicator.fraction = 0.0
                     
+                    // 注意：runBlocking是阻塞的，无法在等待时检查取消状态
+                    // 但我们在reviewService.reviewCode内部已经添加了取消检查
                     val result = runBlocking {
                         reviewService.reviewCode(
                             codeChanges = codeChanges,
@@ -79,7 +82,13 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
                     ApplicationManager.getApplication().invokeLater {
                         logger.info("代码评审任务完成 - 状态: ${result.status}, 耗时: ${taskDuration}ms")
                         logger.info("评审内容长度: ${result.reviewContent.length} 字符")
-                        showReviewResult(project, result)
+                        
+                        // 根据状态显示不同的结果
+                        if (result.status == ReviewResult.ReviewStatus.CANCELLED) {
+                            logger.info("评审已取消，不显示结果")
+                        } else {
+                            showReviewResult(project, result)
+                        }
                         
                         logger.info("=== Action $actionId 代码评审完成 ===\n")
                     }
