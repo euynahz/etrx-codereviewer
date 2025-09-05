@@ -3,7 +3,7 @@ package com.etrx.codereviewer.action
 import com.etrx.codereviewer.model.CodeChange
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
-import com.etrx.codereviewer.ui.CodeReviewResultDialog
+import com.etrx.codereviewer.service.ReviewResultFileService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -60,6 +60,8 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
                 
                 try {
                     logger.info("开始执行代码评审任务...")
+                    // 修复进度指示器警告：在设置fraction之前设置Indeterminate为false
+                    indicator.isIndeterminate = false
                     indicator.text = "Starting code review with template: ${promptTemplate.name}..."
                     indicator.fraction = 0.0
                     
@@ -105,20 +107,31 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
     private fun showReviewResult(project: Project, result: com.etrx.codereviewer.model.ReviewResult) {
         logger.info("显示评审结果 - ID: ${result.id}, 状态: ${result.status}")
         
-        // Show result in popup dialog
-        CodeReviewResultDialog.showDialog(project, result)
+        // Save result to file and open it
+        val fileService = project.getService(ReviewResultFileService::class.java)
+        val saveSuccess = fileService.saveAndOpenReviewResult(project, result)
         
-        // Only show error notifications, not success notifications
+        if (saveSuccess) {
+            logger.info("评审结果已保存到文件并打开")
+        } else {
+            logger.error("保存评审结果失败，降级到弹窗显示")
+            // Fallback to dialog if file save fails
+            showErrorDialog(project, "无法保存评审结果到文件，请检查文件路径配置。")
+        }
+        
+        // Only show error notifications for failed reviews
         if (!result.isSuccessful()) {
             logger.warn("评审结果显示错误通知: ${result.errorMessage}")
-            Messages.showErrorDialog(
-                project,
-                result.errorMessage ?: "Review failed with unknown error.",
-                "Review Error"
-            )
-        } else {
-            logger.info("评审结果对话框已显示")
+            showErrorDialog(project, result.errorMessage ?: "Review failed with unknown error.")
         }
+    }
+    
+    private fun showErrorDialog(project: Project, message: String) {
+        Messages.showErrorDialog(
+            project,
+            message,
+            "Review Error"
+        )
     }
     
     override fun getActionUpdateThread(): ActionUpdateThread {

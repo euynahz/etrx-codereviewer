@@ -7,6 +7,7 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.xmlb.XmlSerializerUtil
 
 /**
@@ -18,10 +19,11 @@ data class CodeReviewerState(
     var aiApiPath: String = "/api/generate",
     var aiTemperature: Double = 0.7,
     var aiMaxTokens: Int = 2048,
-    var aiTimeout: Int = 30000,
+    var aiTimeout: Int = 300000, // 减少超时时间到30秒
     var aiRetryCount: Int = 3,
     var selectedPromptTemplate: String = "简洁代码评审",
-    var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf()
+    var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
+    var reviewResultFilePath: String = ".ai-code-review" // 默认为.ai-code-review文件夹
 )
 
 /**
@@ -45,6 +47,7 @@ data class PromptTemplateData(
 class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> {
     
     private var state = CodeReviewerState()
+    private val logger = Logger.getInstance(CodeReviewerSettingsService::class.java)
     
     companion object {
         fun getInstance(): CodeReviewerSettingsService {
@@ -55,9 +58,14 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     override fun getState(): CodeReviewerState = state
     
     override fun loadState(state: CodeReviewerState) {
+        logger.info("=== 加载设置状态 ===")
+        logger.info("加载前的模板选择: ${this.state.selectedPromptTemplate}")
         XmlSerializerUtil.copyBean(state, this.state)
+        logger.info("加载后的模板选择: ${this.state.selectedPromptTemplate}")
         ensureDefaultValues()
+        logger.info("验证后的模板选择: ${this.state.selectedPromptTemplate}")
         initializeDefaultTemplates()
+        logger.info("=== 设置状态加载完成 ===")
     }
     
     /**
@@ -73,8 +81,20 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         if (state.aiModelName.isBlank()) {
             state.aiModelName = "qwen3:8b"
         }
-        if (state.selectedPromptTemplate.isBlank() || state.selectedPromptTemplate == "Default Code Review") {
-            state.selectedPromptTemplate = "简洁代码评审"
+        if (state.reviewResultFilePath.isBlank()) {
+            state.reviewResultFilePath = "ai-code-review.md"
+        }
+        // Only reset template selection if it's truly blank or invalid
+        if (state.selectedPromptTemplate.isBlank()) {
+            state.selectedPromptTemplate = PromptTemplate.DEFAULT_TEMPLATE.name
+        } else {
+            // Validate that the selected template actually exists
+            val availableTemplates = getAvailablePromptTemplates()
+            val exists = availableTemplates.any { it.name == state.selectedPromptTemplate }
+            if (!exists) {
+                // Only reset if the template doesn't exist anymore
+                state.selectedPromptTemplate = PromptTemplate.DEFAULT_TEMPLATE.name
+            }
         }
     }
     
@@ -141,7 +161,19 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     }
     
     fun setSelectedPromptTemplate(templateName: String) {
+        logger.info("设置选中的模板: 从 '${state.selectedPromptTemplate}' 切换到 '$templateName'")
         state.selectedPromptTemplate = templateName
+        logger.info("模板设置完成: ${state.selectedPromptTemplate}")
+    }
+    
+    fun getReviewResultFilePath(): String {
+        return state.reviewResultFilePath
+    }
+    
+    fun setReviewResultFilePath(filePath: String) {
+        logger.info("设置评审结果文件路径: 从 '${state.reviewResultFilePath}' 切换到 '$filePath'")
+        state.reviewResultFilePath = filePath
+        logger.info("文件路径设置完成: ${state.reviewResultFilePath}")
     }
 
     

@@ -24,6 +24,7 @@ dependencies {
 }
 
 intellij {
+//    version.set("2024.1")
     version.set("2024.3")
     type.set("IC")
     plugins.set(listOf("com.intellij.java", "Git4Idea", "org.intellij.plugins.markdown"))

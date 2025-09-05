@@ -22,7 +22,7 @@ data class PromptTemplate(
 3. 优化建议要具体可执行
 4. 如果代码质量良好，简单说明即可
 5. 避免过度解释和冗长描述
-6. 要返回思考过程。
+6. 不要返回思考过程。
 
 
 输出模板如下：
@@ -33,11 +33,12 @@ data class PromptTemplate(
 ## 🔍 发现的问题
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
-### [问题标题]
+### 问题标题
 [问题详解与优化建议]
 
-## 💡 优化建议
+## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
+[优化后的代码示例]
 
 代码变更：
 $CODE_PLACEHOLDER""",
@@ -57,11 +58,12 @@ $CODE_PLACEHOLDER""",
 ## 🔍 发现的问题
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
-### [问题标题]
+### 问题标题
 [问题详解与优化建议]
 
-## 💡 优化建议
+## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
+[优化后的代码示例]
 
 
 代码变更：
@@ -97,11 +99,12 @@ $CODE_PLACEHOLDER""",
 ## 🔍 发现的问题
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
-### [问题标题]
+### 问题标题
 [问题详解与优化建议]
 
-## 💡 优化建议
+## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
+[优化后的代码示例]
 
 代码变更如下：
 $CODE_PLACEHOLDER""",
@@ -134,11 +137,12 @@ $CODE_PLACEHOLDER""",
 ## 🔍 发现的问题
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
-### [问题标题]
+### 问题标题
 [问题详解与优化建议]
 
-## 💡 优化建议
+## 💡 优化后的代码示例
 [针对问题的建议总结，没有则写"代码质量良好"]
+[优化后的代码示例]
 
 
 代码变更如下：
@@ -173,17 +177,38 @@ $CODE_PLACEHOLDER""",
 ## 🔍 发现的问题
 [如果有问题，按下面的方式列出，没有问题则写"未发现明显问题"]
 
-### [问题标题]
+### 问题标题
 [问题详解与优化建议]
 
-## 💡 优化建议
+## 💡 优化后的文档示例
 [针对问题的建议总结，没有则写"代码质量良好"]
-
+[优化后的文档示例]
 
 代码变更如下：
 $CODE_PLACEHOLDER""",
             description = "开发手册评审"
         )
+
+        /**
+         * 处理AI返回内容，移除思考过程等无关内容
+         */
+        fun processAIResponse(response: String): String {
+            var processedResponse = response
+
+            // 首先移除think标签及其内容 (例如</think>...</think>)
+            val thinkPattern = Regex("[\\n\\s]*?```[tT][hH][iI][nN][kK]\\n.*?```", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = thinkPattern.replace(processedResponse, "")
+            
+            // 也处理没有code fence的think标签格式 (例如</think>...</think>)
+            val simpleThinkPattern = Regex("[\\n\\s]*?```[tT][hH][iI][nN][kK].*?```", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = simpleThinkPattern.replace(processedResponse, "")
+            
+            // 处理简单的</think>标签格式
+            val angleThinkPattern = Regex("[\\n\\s]*?\\{\\{\\{[tT][hH][iI][nN][kK]\\}\\}\\}\n.*?\\{\\{\\{\\/[tT][hH][iI][nN][kK]\\}\\}\\}", RegexOption.DOT_MATCHES_ALL)
+            processedResponse = angleThinkPattern.replace(processedResponse, "")
+
+            return processedResponse.trim()
+        }
     }
 
     fun formatWithCode(code: String): String {

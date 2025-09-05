@@ -41,6 +41,9 @@ class CodeReviewerConfigurable : Configurable {
     // Prompt Template Fields
     private val promptTemplateCombo = JComboBox<PromptTemplate>()
     private val customPromptArea = JTextArea(10, 50)
+    
+    // Review Result File Configuration
+    private val reviewResultFilePathField = JBTextField()
 
     override fun getDisplayName(): String = "Code Reviewer"
 
@@ -54,6 +57,7 @@ class CodeReviewerConfigurable : Configurable {
             val tabPane = JTabbedPane()
             tabPane.addTab("AI Configuration", aiConfigPanel)
             tabPane.addTab("Prompt Templates", promptConfigPanel)
+            tabPane.addTab("Result Output", createResultConfigPanel())
             add(tabPane, BorderLayout.CENTER)
         }
 
@@ -224,6 +228,28 @@ class CodeReviewerConfigurable : Configurable {
             .addComponentFillVertically(JPanel(), 0)
             .panel
     }
+    
+    private fun createResultConfigPanel(): JPanel {
+        // Setup result file path panel with reset button
+        val filePathPanel = JPanel(BorderLayout()).apply {
+            add(reviewResultFilePathField, BorderLayout.CENTER)
+            val filePathResetBtn = JButton("Default").apply {
+                addActionListener {
+                    reviewResultFilePathField.text = "ai-code-review.md"
+                }
+            }
+            add(filePathResetBtn, BorderLayout.EAST)
+        }
+        
+        val helpText = JLabel("<html><font color='gray'><i>结果文件路径支持相对路径（相对于项目根目录）或绝对路径。<br/>" +
+                "</font></html>")
+        
+        return FormBuilder.createFormBuilder()
+            .addLabeledComponent(JBLabel("评审结果文件路径:"), filePathPanel)
+            .addComponent(helpText)
+            .addComponentFillVertically(JPanel(), 0)
+            .panel
+    }
 
     private fun initializeFields() {
         val config = settingsService.getAIModelConfig()
@@ -235,6 +261,9 @@ class CodeReviewerConfigurable : Configurable {
         maxTokensSpinner.value = config.maxTokens
         timeoutSpinner.value = config.timeout
         retryCountSpinner.value = config.retryCount
+        
+        // Set result file path
+        reviewResultFilePathField.text = settingsService.getReviewResultFilePath()
 
         // Initialize model combo with saved selection
         refreshModelList(config.modelName)
@@ -439,10 +468,14 @@ class CodeReviewerConfigurable : Configurable {
 
         val selectedTemplate = promptTemplateCombo.selectedItem as? PromptTemplate
         val savedTemplate = settingsService.getSelectedPromptTemplate()
+        
+        val currentFilePath = reviewResultFilePathField.text
+        val savedFilePath = settingsService.getReviewResultFilePath()
 
         return currentConfig != savedConfig ||
                 selectedTemplate?.name != savedTemplate.name ||
-                customPromptArea.text != selectedTemplate?.template
+                customPromptArea.text != selectedTemplate?.template ||
+                currentFilePath != savedFilePath
     }
 
     override fun apply() {
@@ -453,6 +486,12 @@ class CodeReviewerConfigurable : Configurable {
             val selectedTemplate = promptTemplateCombo.selectedItem as? PromptTemplate
             selectedTemplate?.let {
                 settingsService.setSelectedPromptTemplate(it.name)
+            }
+            
+            // Save result file path
+            val filePath = reviewResultFilePathField.text.trim()
+            if (filePath.isNotEmpty()) {
+                settingsService.setReviewResultFilePath(filePath)
             }
         } else {
             Messages.showErrorDialog(
@@ -569,12 +608,15 @@ class CodeReviewerConfigurable : Configurable {
             apiPathField.text = "/api/generate"
             temperatureSpinner.value = 0.7
             maxTokensSpinner.value = 2048
-            timeoutSpinner.value = 30000
+            timeoutSpinner.value = 120000 // 更新默认超时时间
             retryCountSpinner.value = 3
+            
+            // Reset result file path
+            reviewResultFilePathField.text = "ai-code-review.md"
 
             // Reset prompt template selection
             val defaultTemplate = settingsService.getAvailablePromptTemplates()
-                .find { it.name == "Default Code Review" }
+                .find { it.name == PromptTemplate.DEFAULT_TEMPLATE.name }
             if (defaultTemplate != null) {
                 promptTemplateCombo.selectedItem = defaultTemplate
                 customPromptArea.text = defaultTemplate.template

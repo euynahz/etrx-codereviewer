@@ -20,27 +20,30 @@ import java.util.concurrent.TimeUnit
  */
 @Service(Service.Level.PROJECT)
 class OllamaReviewService : AIReviewService {
+
+    protected val SYSTEM_PROMPT = """**【重要系统要求】：**
+        1. 请务必使用中文回复，所有内容都必须是中文。
+        2. 不要返回思考过程。
+""".trimIndent()
     
     private val logger = Logger.getInstance(OllamaReviewService::class.java)
     private val objectMapper = jacksonObjectMapper()
     private val settingsService = CodeReviewerSettingsService.getInstance()
     
     private fun createHttpClient(timeoutMs: Int): OkHttpClient {
-        val timeoutSeconds = (timeoutMs / 1000L).coerceAtLeast(30L) // 最少30秒
+        val timeoutSeconds = (timeoutMs / 1000L).coerceAtLeast(60L) // 最少60秒
         return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // 连接超时固定30秒
             .readTimeout(timeoutSeconds, TimeUnit.SECONDS) // 读取超时使用配置值
-            .writeTimeout(30, TimeUnit.SECONDS) // 写入超时固定30秒
+            .retryOnConnectionFailure(true) // 启用连接失败重试
             .build()
     }
     
     private fun createTestHttpClient(config: AIModelConfig): OkHttpClient {
         // Use a reasonable timeout for connection tests, but respect the configured timeout
-        val testTimeoutSeconds = (config.timeout / 1000L).coerceAtLeast(30L).coerceAtMost(120L) // 至少30秒，最多120秒
+        val testTimeoutSeconds = (config.timeout / 1000L).coerceAtLeast(60L).coerceAtMost(180L) // 至少60秒，最多180秒
         return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS) // 连接超时固定30秒
             .readTimeout(testTimeoutSeconds, TimeUnit.SECONDS) // 使用配置的超时时间
-            .writeTimeout(30, TimeUnit.SECONDS) // 写入超时固定30秒
+            .retryOnConnectionFailure(true) // 启用连接失败重试
             .build()
     }
     
@@ -62,47 +65,126 @@ class OllamaReviewService : AIReviewService {
             logger.info("请求参数 - Temperature: ${config.temperature}, MaxTokens: ${config.maxTokens}")
             logger.info("代码变更数量: ${codeChanges.size}")
             
-            progressIndicator?.text = "[${templateName}] Preparing code for review..."
+            progressIndicator?.text = "[$templateName] Preparing code for review..."
             progressIndicator?.fraction = 0.1
             
             val codeContent = buildCodeContent(codeChanges)
-            val fullPrompt = prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)
+            var fullPrompt = prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)
+            fullPrompt = "${SYSTEM_PROMPT}\n${fullPrompt}"
             
             logger.info("代码内容长度: ${codeContent.length} 字符")
             logger.info("完整提示词长度: ${fullPrompt.length} 字符")
             logger.info("AI请求URL: ${config.getFullUrl()}")
             
-            progressIndicator?.text = "[${templateName}] Sending request to AI service..."
+            progressIndicator?.text = "[$templateName] Sending request to AI service..."
             progressIndicator?.fraction = 0.3
             
-            val ollamaRequest = OllamaRequest(
-                model = config.modelName,
-                prompt = fullPrompt,
-                stream = false,
-                options = OllamaOptions(
-                    temperature = config.temperature,
-                    top_p = 0.9,
-                    top_k = 40,
-                    num_predict = config.maxTokens
-                )
-            )
+            var currentModel = config.modelName
+            var availableModels: List<String>? = null
             
-            logger.info("请求选项 - TopP: 0.9, TopK: 40, NumPredict: ${config.maxTokens}")
-            
-            val response = sendOllamaRequest(ollamaRequest, config)
-            
-            progressIndicator?.text = "[${templateName}] Processing AI response..."
+            // 重试机制：在超时或连接失败时重试
+            var lastException: Exception? = null
+            var response: Response? = null
+
+            for (attempt in 1..config.retryCount.coerceAtLeast(1)) {
+                try {
+                    var retryText = ""
+
+                    if (attempt > 1) {
+                        retryText = "重试 $attempt/${config.retryCount.coerceAtLeast(1)}"
+                    }
+
+                    progressIndicator?.text = "[$templateName] 发送AI请求到服务器...$retryText (模型: $currentModel)"
+
+                    val ollamaRequest = OllamaRequest(
+                        model = currentModel,
+                        prompt = fullPrompt,
+                        stream = false,
+                        options = OllamaOptions(
+                            temperature = config.temperature,
+                            top_p = 0.9,
+                            top_k = 40,
+                            num_predict = config.maxTokens
+                        )
+                    )
+
+                    response = sendOllamaRequest(ollamaRequest, config)
+
+                    if (response.isSuccessful) {
+                        logger.info("请求成功 - 尝试次数: $attempt, 模型: $currentModel")
+                        break
+                    } else {
+                        val errorMessage = "HTTP ${response.code}: ${response.message}"
+                        logger.warn("请求失败 - 尝试 $attempt/${config.retryCount.coerceAtLeast(1)}: $errorMessage")
+
+                        if (attempt < config.retryCount.coerceAtLeast(1)) {
+                            val delay = 2000L * attempt // 指数退避：2s, 4s, 6s...
+                            logger.info("等待 ${delay}ms 后进行重试...")
+                            kotlinx.coroutines.delay(delay)
+                        }
+                    }
+                } catch (e: Exception) {
+                    lastException = e
+                    val errorType = when (e) {
+                        is java.net.SocketTimeoutException -> "超时"
+                        is java.net.ConnectException -> "连接拒绝"
+                        is java.net.UnknownHostException -> "主机不可达"
+                        is IOException -> "IO异常"
+                        else -> e.javaClass.simpleName
+                    }
+
+                    logger.warn("请求异常 - 尝试 $attempt/${config.retryCount.coerceAtLeast(1)}: $errorType - ${e.message}")
+
+                    // 对于超时错误，提供额外的诊断信息并尝试切换模型
+                    if (e is java.net.SocketTimeoutException) {
+                        logger.warn("超时诊断 - 当前超时配置: ${config.timeout}ms, 建议增加超时时间或检查网络连接")
+                        logger.warn("或者考虑使用更小的模型或减少代码内容长度")
+                        
+                        // 尝试切换模型
+                        if (availableModels == null) {
+                            availableModels = try {
+                                getAvailableModels()
+                            } catch (modelError: Exception) {
+                                logger.warn("获取模型列表失败: ${modelError.message}")
+                                getDefaultModels()
+                            }
+                        }
+                        
+                        // 如果有多个模型可用且当前模型不是最后一个，则切换到下一个模型
+                        if (availableModels?.size ?: 0 > 1) {
+                            val currentIndex = availableModels?.indexOf(currentModel) ?: 0
+                            val nextIndex = if (currentIndex < (availableModels?.size ?: 0) - 1) currentIndex + 1 else 0
+                            currentModel = availableModels?.get(nextIndex) ?: currentModel
+                            logger.info("超时后切换模型: $currentModel")
+                        }
+                    }
+
+                    if (attempt < config.retryCount.coerceAtLeast(1)) {
+                        val delay = 2000L * attempt // 指数退避
+                        logger.info("等待 ${delay}ms 后进行重试...")
+                        kotlinx.coroutines.delay(delay)
+                    }
+                }
+            }
+
+            progressIndicator?.text = "[${templateName}] 处理AI响应..."
             progressIndicator?.fraction = 0.8
             
-            if (response.isSuccessful) {
+            // 检查是否有成功的响应
+            if (response?.isSuccessful == true) {
                 val responseBody = response.body?.string() ?: ""
-                val  totalTime = System.currentTimeMillis() - startTime
+                val totalTime = System.currentTimeMillis() - startTime
                 
                 logger.info("评审响应成功 - HTTP ${response.code}, 响应体长度: ${responseBody.length} 字符")
                 logger.info("总耗时: ${totalTime}ms")
                 
                 val ollamaResponse = objectMapper.readValue<OllamaResponse>(responseBody)
-                val reviewContent = ollamaResponse.getContent()
+                var reviewContent = ollamaResponse.getContent()
+
+                logger.info("AI 相应数据：$reviewContent");
+                
+                // 处理AI响应，移除思考过程
+                reviewContent = PromptTemplate.processAIResponse(reviewContent)
                 
                 logger.info("AI评审内容长度: ${reviewContent.length} 字符")
                 logger.info("AI模型: ${ollamaResponse.model ?: "未知"}")
@@ -114,29 +196,59 @@ class OllamaReviewService : AIReviewService {
                 return@withContext ReviewResult(
                     id = reviewId,
                     reviewContent = reviewContent,
-                    modelUsed = config.modelName,
+                    modelUsed = currentModel, // 使用实际使用的模型名称
                     promptTemplate = prompt,
                     codeChanges = codeChanges,
                     status = ReviewResult.ReviewStatus.SUCCESS
                 )
             } else {
-                val errorBody = response.body?.string() ?: "Unknown error"
-                val errorMessage = "HTTP ${response.code}: ${response.message} - $errorBody"
+                // 所有重试失败，抛出最后一次的异常或响应错误
                 val totalTime = System.currentTimeMillis() - startTime
                 
-                logger.error("评审请求失败 - $errorMessage")
-                logger.info("请求URL: ${config.getFullUrl()}")
-                logger.info("失败耗时: ${totalTime}ms")
-                logger.info("=== AI代码评审请求失败 ===\n")
-                throw IOException(errorMessage)
+                if (lastException != null) {
+                    logger.error("所有重试都失败，最后一次异常: ${lastException.message}")
+                    throw lastException
+                } else if (response != null) {
+                    val errorBody = response.body?.string() ?: "Unknown error"
+                    val errorMessage = "HTTP ${response.code}: ${response.message} - $errorBody"
+                    logger.error("所有重试都失败 - $errorMessage")
+                    logger.info("请求URL: ${config.getFullUrl()}")
+                    logger.info("失败耗时: ${totalTime}ms")
+                    logger.info("=== AI代码评审请求失败 ===\n")
+                    throw IOException(errorMessage)
+                } else {
+                    val errorMessage = "所有重试都失败，无有收到任何响应"
+                    logger.error(errorMessage)
+                    throw IOException(errorMessage)
+                }
             }
             
         } catch (e: Exception) {
             val totalTime = System.currentTimeMillis() - startTime
+            val errorType = when (e) {
+                is java.net.SocketTimeoutException -> "超时"
+                is java.net.ConnectException -> "连接拒绝"
+                is java.net.UnknownHostException -> "主机不可达"
+                is IOException -> "IO异常"
+                else -> e.javaClass.simpleName
+            }
             
-            logger.error("代码评审异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}", e)
+            logger.error("代码评审异常 - 类型: $errorType, 消息: ${e.message}", e)
             logger.info("请求配置 - URL: ${config.getFullUrl()}, Model: ${config.modelName}")
+            logger.info("超时配置: ${config.timeout}ms, 重试次数: ${config.retryCount}")
             logger.info("异常耗时: ${totalTime}ms")
+            
+            // 根据错误类型提供针对性建议
+            val userFriendlyMessage = when (e) {
+                is java.net.SocketTimeoutException -> 
+                    "请求超时。建议：1) 增加超时时间(${config.timeout}ms -> ${config.timeout * 2}ms); 2) 检查网络连接; 3) 使用更小的模型"
+                is java.net.ConnectException -> 
+                    "连接被拒绝。请检查：1) Ollama服务是否启动; 2) 端口配置是否正确(${config.endpoint}); 3) 防火墙设置"
+                is java.net.UnknownHostException -> 
+                    "主机不可达。请检查：1) 端点地址是否正确(${config.endpoint}); 2) 网络连接是否正常"
+                else -> e.message ?: "Unknown error occurred"
+            }
+            
             logger.info("=== AI代码评审请求异常结束 ===\n")
             
             return@withContext ReviewResult(
@@ -146,7 +258,7 @@ class OllamaReviewService : AIReviewService {
                 promptTemplate = prompt,
                 codeChanges = codeChanges,
                 status = ReviewResult.ReviewStatus.ERROR,
-                errorMessage = e.message ?: "Unknown error occurred"
+                errorMessage = userFriendlyMessage
             )
         }
     }
@@ -159,7 +271,7 @@ class OllamaReviewService : AIReviewService {
             logger.info("=== AI服务连接测试开始 ===")
             logger.info("测试配置 - Endpoint: ${config.endpoint}, Model: ${config.modelName}")
             logger.info("测试URL: ${config.getFullUrl()}")
-            logger.info("超时配置 - 连接: 30s, 读取: ${(config.timeout / 1000L).coerceAtLeast(30L).coerceAtMost(120L)}s, 写入: 30s")
+            logger.info("超时配置 - 连接: 30s, 读取: ${(config.timeout / 1000L).coerceAtLeast(60L).coerceAtMost(180L)}s, 写入: 30s")
             
             val testRequest = OllamaRequest(
                 model = config.modelName,
@@ -369,6 +481,9 @@ class OllamaReviewService : AIReviewService {
             logger.error("错误响应体: $errorBody")
             // Don't consume response body here, let caller handle it
         }
+
+        // 移除这个日志语句，因为它会消耗response body
+        // logger.info("响应：${response.body?.string()}")
         
         response
     }
