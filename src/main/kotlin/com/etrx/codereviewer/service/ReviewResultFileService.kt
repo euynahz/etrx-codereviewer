@@ -108,7 +108,7 @@ class ReviewResultFileService {
         logger.info("开始解析文件路径 - 配置路径: '$configuredPath'")
         
         // 生成日期时间格式化的文件名（精确到分钟）
-        val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm")
+        val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
         val currentDateTime = LocalDateTime.now().format(dateTimeFormatter)
         val fileName = "ai-code-review-$currentDateTime.md"
         

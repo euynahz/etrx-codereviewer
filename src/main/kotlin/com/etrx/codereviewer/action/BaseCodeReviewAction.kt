@@ -17,6 +17,9 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.vcs.VcsDataKeys
+import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangeListManager
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -25,6 +28,82 @@ import kotlinx.coroutines.runBlocking
 abstract class BaseCodeReviewAction : AnAction(), DumbAware {
     
     private val logger = Logger.getInstance(BaseCodeReviewAction::class.java)
+    
+    /**
+     * 获取用户选中的变更文件。
+     * 兼容不同版本的 IDE：优先读取“选中/勾选”的变更，其次读取高亮选中，最后从虚拟文件回退到变更。
+     */
+    protected fun getSelectedChanges(e: AnActionEvent): List<Change> {
+        val actionName = this.javaClass.simpleName
+        logger.info("[$actionName] === 开始获取用户选中的变更文件 ===")
+
+        // 方法1：优先使用 SELECTED_CHANGES（适用于变更树/提交面板里明确选中的变更）
+        val selectedChanges: Array<Change>? = e.getData(VcsDataKeys.SELECTED_CHANGES)
+        if (selectedChanges != null && selectedChanges.isNotEmpty()) {
+            val changes = selectedChanges.toList()
+            logger.info("[$actionName] 从 VcsDataKeys.SELECTED_CHANGES 获取到 ${changes.size} 个选中/勾选的变更")
+            changes.forEachIndexed { index, change ->
+                logger.info("[$actionName]   选中变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+            }
+            logger.info("[$actionName] === 获取选中变更完成(方法1) ===")
+            return changes
+        }
+        logger.info("[$actionName] VcsDataKeys.SELECTED_CHANGES 为空，尝试回退方法")
+
+        // 方法2：使用 CHANGES（高亮选中的变更，或某些视图中的选择）
+        val highlightedChanges: Array<Change>? = e.getData(VcsDataKeys.CHANGES)
+        if (highlightedChanges != null && highlightedChanges.isNotEmpty()) {
+            val changes = highlightedChanges.toList()
+            logger.info("[$actionName] 从 VcsDataKeys.CHANGES 获取到 ${changes.size} 个选中的变更")
+            changes.forEachIndexed { index, change ->
+                logger.info("[$actionName]   选中变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+            }
+            logger.info("[$actionName] === 获取选中变更完成(方法2) ===")
+            return changes
+        }
+        logger.info("[$actionName] VcsDataKeys.CHANGES 为空，尝试回退方法")
+
+        // 方法3：从虚拟文件回退到 Change（支持从项目视图等位置触发）
+        val project = e.project
+        val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
+        if (project != null && virtualFiles != null && virtualFiles.isNotEmpty()) {
+            logger.info("[$actionName] 从 CommonDataKeys.VIRTUAL_FILE_ARRAY 获取到 ${virtualFiles.size} 个虚拟文件")
+            val changeListManager = ChangeListManager.getInstance(project)
+            val changes = virtualFiles.mapNotNull { vf -> changeListManager.getChange(vf) }
+            if (changes.isNotEmpty()) {
+                logger.info("[$actionName] 通过虚拟文件数组转换得到 ${changes.size} 个变更")
+                logger.info("[$actionName] === 获取选中变更完成(方法3) ===")
+                return changes
+            } else {
+                logger.info("[$actionName] 无法从虚拟文件数组中找到对应的变更")
+            }
+        }
+        logger.info("[$actionName] CommonDataKeys.VIRTUAL_FILE_ARRAY 为空或未找到变更")
+
+        logger.info("[$actionName] 无法获取任何选中的文件变更。")
+        logger.info("[$actionName] === 获取选中变更结束 ===")
+        return emptyList()
+    }
+    
+    /**
+     * 提取项目中的所有变更
+     */
+    protected fun extractAllChanges(project: Project): List<Change> {
+        val actionName = this.javaClass.simpleName
+        logger.info("[$actionName] === 提取所有变更开始 ===")
+        
+        val changeListManager = ChangeListManager.getInstance(project)
+        val allChanges = changeListManager.allChanges.toList()
+        
+        logger.info("[$actionName] 从变更列表管理器中获取到 ${allChanges.size} 个所有变更")
+        allChanges.forEachIndexed { index, change ->
+            logger.info("[$actionName]   所有变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+        }
+        
+        logger.info("[$actionName] === 提取所有变更完成 ===")
+        
+        return allChanges
+    }
     
     protected fun performCodeReview(project: Project, codeChanges: List<CodeChange>) {
         if (codeChanges.isEmpty()) {
@@ -113,7 +192,7 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         })
     }
     
-    private fun showReviewResult(project: Project, result: com.etrx.codereviewer.model.ReviewResult) {
+    private fun showReviewResult(project: Project, result: ReviewResult) {
         logger.info("显示评审结果 - ID: ${result.id}, 状态: ${result.status}")
         
         // Save result to file and open it

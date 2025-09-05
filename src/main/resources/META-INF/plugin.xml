@@ -70,7 +70,7 @@
         <action 
             id="CodeReviewer.VcsCommitReview"
             class="com.etrx.codereviewer.action.VcsCommitReviewAction"
-            text="Review with AI"
+            text="AI 代码评审；按住 Shift 选中文件可以发起部分文件评审"
             description="Review code changes with AI before committing"
             icon="AllIcons.Actions.Preview">
             <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>

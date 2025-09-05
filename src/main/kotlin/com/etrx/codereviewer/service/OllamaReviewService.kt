@@ -20,13 +20,6 @@ import java.util.concurrent.TimeUnit
  */
 @Service(Service.Level.PROJECT)
 class OllamaReviewService : AIReviewService {
-
-    protected val SYSTEM_PROMPT = """**【！！！重要系统要求！！！】：**
-        1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
-        2. **不要返回思考过程。**
-    现在，根据上述要求完成下面的任务。
-    
-""".trimIndent()
     
     private val logger = Logger.getInstance(OllamaReviewService::class.java)
     private val objectMapper = jacksonObjectMapper()
@@ -72,10 +65,29 @@ class OllamaReviewService : AIReviewService {
             
             val codeContent = buildCodeContent(codeChanges)
             var fullPrompt = prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)
-            fullPrompt = "${SYSTEM_PROMPT}\n${fullPrompt}\n${SYSTEM_PROMPT}"
+            fullPrompt = """
+# ${templateName}
+## !!!重要系统要求!!!
+1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+2. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+3. **不要返回思考过程。**
+4. **遵循输出格式要求。不要使用```markdown 代码块包裹**
+                
+## 任务描述（注意输出格式要求）
+> 提示：文件变更涉及多个文件，会使用`---`进行文件分割。
+                
+${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
+
+## !!!重要系统要求!!!
+1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+2. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+3. **不要返回思考过程。**
+4. **遵循输出格式要求。不要使用```markdown 代码块包裹**
+"""
             
             logger.info("代码内容长度: ${codeContent.length} 字符")
             logger.info("完整提示词长度: ${fullPrompt.length} 字符")
+            logger.info("完整提示词: $fullPrompt")
             logger.info("AI请求URL: ${config.getFullUrl()}")
             
             progressIndicator?.text = "[$templateName] Sending request to AI service..."
@@ -419,7 +431,7 @@ class OllamaReviewService : AIReviewService {
     
     private fun buildCodeContent(codeChanges: List<CodeChange>): String {
         if (codeChanges.isEmpty()) {
-            return "No code changes to review."
+            return "暂无代码需要评审。"
         }
         
         val builder = StringBuilder()

@@ -78,24 +78,24 @@ object VcsChangeExtractor {
         }
         
         // Limit content size to prevent overwhelming the AI
-        val maxContentSize = 10000 // characters
-        
-        val trimmedOldContent = oldContent?.let { 
-            if (it.length > maxContentSize) {
-                it.take(maxContentSize) + "\n... [content truncated]"
-            } else it
-        }
-        
-        val trimmedNewContent = newContent?.let {
-            if (it.length > maxContentSize) {
-                it.take(maxContentSize) + "\n... [content truncated]"
-            } else it
-        }
+//        val maxContentSize = 10000 // characters
+//
+//        val trimmedOldContent = oldContent?.let {
+//            if (it.length > maxContentSize) {
+//                it.take(maxContentSize) + "\n... [content truncated]"
+//            } else it
+//        }
+//
+//        val trimmedNewContent = newContent?.let {
+//            if (it.length > maxContentSize) {
+//                it.take(maxContentSize) + "\n... [content truncated]"
+//            } else it
+//        }
         
         return CodeChange(
             filePath = filePath,
-            oldContent = trimmedOldContent,
-            newContent = trimmedNewContent,
+            oldContent = oldContent,
+            newContent = newContent,
             changeType = changeType
         )
     }
