@@ -22,15 +22,16 @@ import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.vcs.CheckinProjectPanel
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vcs.ui.Refreshable
 import kotlinx.coroutines.runBlocking
 
 /**
  * Base class for code review actions
  */
 abstract class BaseCodeReviewAction : AnAction(), DumbAware {
-    
+
     private val logger = Logger.getInstance(BaseCodeReviewAction::class.java)
-    
+
     /**
      * 获取用户选中的变更文件。
      * 兼容不同版本的 IDE：优先读取“包含/勾选”的变更（用于本次提交），
@@ -40,37 +41,93 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         val actionName = this.javaClass.simpleName
         logger.info("[$actionName] === 开始获取用户选中的变更文件 ===")
 
-        // 方法1（优先）：Commit 面板的 CheckinProjectPanel（官方接口，返回“将要提交”的变更）
-        // 为兼容缺少常量 DataKey 的平台版本，这里通过名称创建 DataKey
-        val checkinPanelKey: DataKey<CheckinProjectPanel> = DataKey.create("CheckinProjectPanel")
-        val checkinPanel = e.getData(checkinPanelKey)
-        if (checkinPanel != null) {
-            // 优先读取“包含到提交”的变更；某些平台版本该属性名为 includedChanges
-            val panelIncluded: Collection<Change> = try {
-                checkinPanel.selectedChanges
-            } catch (ex: Throwable) {
-                try {
-                    // 通过反射兼容 includedChanges
-                    val prop = checkinPanel.javaClass.methods.firstOrNull { it.name == "getIncludedChanges" && it.parameterCount == 0 }
+        // 方法0（最高优先级）：通过 Commit Workflow 读取“已包含(勾选)”的变更（使用反射避免编译期依赖）
+        try {
+            val handler = e.getData(VcsDataKeys.COMMIT_WORKFLOW_HANDLER)
+            if (handler != null) {
+                // 反射获取 ui: CommitWorkflowUi
+                val uiObj: Any? = try {
+                    handler.javaClass.methods.firstOrNull { it.name == "getUi" && it.parameterCount == 0 }?.invoke(handler)
+                } catch (_: Throwable) {
+                    null
+                } ?: run {
+                    try {
+                        val field = handler.javaClass.declaredFields.firstOrNull { it.name == "ui" }
+                        field?.apply { isAccessible = true }?.get(handler)
+                    } catch (_: Throwable) {
+                        null
+                    }
+                }
+
+                if (uiObj != null) {
+                    // 反射调用 getIncludedChanges()
+                    val included: Any? = try {
+                        uiObj.javaClass.methods.firstOrNull { it.name == "getIncludedChanges" && it.parameterCount == 0 }?.invoke(uiObj)
+                    } catch (_: Throwable) {
+                        null
+                    }
                     @Suppress("UNCHECKED_CAST")
-                    (prop?.invoke(checkinPanel) as? Collection<Change>) ?: emptyList()
-                } catch (ex2: Throwable) {
-                    emptyList()
+                    val includedChanges: Collection<Change> =
+                        (included as? Collection<*>)?.filterIsInstance<Change>() ?: emptyList()
+
+                    if (includedChanges.isNotEmpty()) {
+                        val changes = includedChanges.toList()
+                        logger.info("[$actionName] 从 CommitWorkflowUi.includedChanges 获取到 ${changes.size} 个已包含(勾选)的变更")
+                        changes.forEachIndexed { index, change ->
+                            logger.info("[$actionName]   包含变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+                        }
+                        logger.info("[$actionName] === 获取选中变更完成(方法0: COMMIT_WORKFLOW_HANDLER) ===")
+                        return changes
+                    } else {
+                        logger.info("[$actionName] CommitWorkflowUi.includedChanges 为空")
+                    }
+                } else {
+                    logger.info("[$actionName] 无法从 CommitWorkflowHandler 反射到 ui 对象")
                 }
+            } else {
+                logger.info("[$actionName] VcsDataKeys.COMMIT_WORKFLOW_HANDLER 不可用")
             }
-            if (panelIncluded.isNotEmpty()) {
-                val changes = panelIncluded.toList()
-                logger.info("[$actionName] 从 CheckinProjectPanel.selectedChanges 获取到 ${changes.size} 个已包含(勾选)的变更")
-                changes.forEachIndexed { index, change ->
-                    logger.info("[$actionName]   包含变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
-                }
-                logger.info("[$actionName] === 获取选中变更完成(方法1: CheckinProjectPanel) ===")
-                return changes
-            }
-            logger.info("[$actionName] CheckinProjectPanel.selectedChanges 为空或为空集合")
+        } catch (t: Throwable) {
+            logger.info("[$actionName] 通过 COMMIT_WORKFLOW_HANDLER 读取包含变更失败: ${t.message}")
         }
 
-        logger.info("[$actionName] 未从 CheckinProjectPanel 获取到包含变更，尝试回退方法")
+        // 方法1（次优先）：Commit 面板的 CheckinProjectPanel（官方接口，返回“将要提交”的变更）
+        // 通过 Refreshable.PANEL_KEY 获取，再安全转换为 CheckinProjectPanel
+        try {
+            val refreshable = e.getData(Refreshable.PANEL_KEY)
+            val checkinPanel = refreshable as? CheckinProjectPanel
+            if (checkinPanel != null) {
+                // 优先读取“包含到提交”的变更；某些平台版本该属性名为 includedChanges
+                val panelIncluded: Collection<Change> = try {
+                    checkinPanel.selectedChanges
+                } catch (ex: Throwable) {
+                    try {
+                        // 通过反射兼容 includedChanges
+                        val prop = checkinPanel.javaClass.methods.firstOrNull { it.name == "getIncludedChanges" && it.parameterCount == 0 }
+                        @Suppress("UNCHECKED_CAST")
+                        (prop?.invoke(checkinPanel) as? Collection<Change>) ?: emptyList()
+                    } catch (_: Throwable) {
+                        emptyList()
+                    }
+                }
+                if (panelIncluded.isNotEmpty()) {
+                    val changes = panelIncluded.toList()
+                    logger.info("[$actionName] 从 CheckinProjectPanel(selectedChanges/includedChanges) 获取到 ${changes.size} 个已包含(勾选)的变更")
+                    changes.forEachIndexed { index, change ->
+                        logger.info("[$actionName]   包含变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+                    }
+                    logger.info("[$actionName] === 获取选中变更完成(方法1: CheckinProjectPanel) ===")
+                    return changes
+                }
+                logger.info("[$actionName] CheckinProjectPanel 未返回包含变更或为空集合")
+            } else {
+                logger.info("[$actionName] Refreshable.PANEL_KEY 不可用或无法转换为 CheckinProjectPanel")
+            }
+        } catch (t: Throwable) {
+            logger.info("[$actionName] 通过 CheckinProjectPanel 读取包含变更失败: ${t.message}")
+        }
+
+        logger.info("[$actionName] 未从 Commit 工作流或 Checkin 面板获取到包含变更，尝试回退方法")
 
         // 方法2：SELECTED_CHANGES —— 变更树里明确选中的（可能未勾选为待提交）或 Commit 面板里按住 Shift 勾选的项
         val selectedChanges: Array<Change>? = e.getData(VcsDataKeys.SELECTED_CHANGES)
