@@ -75,6 +75,7 @@ class OllamaReviewService : AIReviewService {
                 
 ## 任务描述（注意输出格式要求）
 > 提示：文件变更涉及多个文件，会使用`---`进行文件分割。
+> 提示：请按照输出模板进行回复，替换中括号及中括号中的内容。
                 
 ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
 
