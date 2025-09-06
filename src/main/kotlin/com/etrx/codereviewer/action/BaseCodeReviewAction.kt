@@ -45,7 +45,19 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         val checkinPanelKey: DataKey<CheckinProjectPanel> = DataKey.create("CheckinProjectPanel")
         val checkinPanel = e.getData(checkinPanelKey)
         if (checkinPanel != null) {
-            val panelIncluded: Collection<Change> = checkinPanel.selectedChanges
+            // 优先读取“包含到提交”的变更；某些平台版本该属性名为 includedChanges
+            val panelIncluded: Collection<Change> = try {
+                checkinPanel.selectedChanges
+            } catch (ex: Throwable) {
+                try {
+                    // 通过反射兼容 includedChanges
+                    val prop = checkinPanel.javaClass.methods.firstOrNull { it.name == "getIncludedChanges" && it.parameterCount == 0 }
+                    @Suppress("UNCHECKED_CAST")
+                    (prop?.invoke(checkinPanel) as? Collection<Change>) ?: emptyList()
+                } catch (ex2: Throwable) {
+                    emptyList()
+                }
+            }
             if (panelIncluded.isNotEmpty()) {
                 val changes = panelIncluded.toList()
                 logger.info("[$actionName] 从 CheckinProjectPanel.selectedChanges 获取到 ${changes.size} 个已包含(勾选)的变更")
@@ -60,7 +72,7 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
 
         logger.info("[$actionName] 未从 CheckinProjectPanel 获取到包含变更，尝试回退方法")
 
-        // 方法2：SELECTED_CHANGES —— 变更树里明确选中的（可能未勾选为待提交）
+        // 方法2：SELECTED_CHANGES —— 变更树里明确选中的（可能未勾选为待提交）或 Commit 面板里按住 Shift 勾选的项
         val selectedChanges: Array<Change>? = e.getData(VcsDataKeys.SELECTED_CHANGES)
         if (selectedChanges != null && selectedChanges.isNotEmpty()) {
             val changes = selectedChanges.toList()
@@ -86,7 +98,69 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         }
         logger.info("[$actionName] VcsDataKeys.CHANGES 为空，尝试回退方法")
 
-        // 方法4：从虚拟文件回退到 Change（支持从项目视图等位置触发）
+        // 方法3.5：尝试通过 DataKey 名称直接读取 INCLUDED_CHANGES（Commit 面板中被勾选的变更）
+        try {
+            val includedKey1: DataKey<Array<Change>> = DataKey.create("INCLUDED_CHANGES")
+            val includedChanges1 = e.getData(includedKey1)
+            if (includedChanges1 != null && includedChanges1.isNotEmpty()) {
+                val changes = includedChanges1.toList()
+                logger.info("[$actionName] 从 DataKey('INCLUDED_CHANGES') 获取到 ${changes.size} 个被勾选的变更")
+                return changes
+            }
+            // 某些平台可能使用命名空间前缀
+            val includedKey2: DataKey<Array<Change>> = DataKey.create("Vcs.IncludedChanges")
+            val includedChanges2 = e.getData(includedKey2)
+            if (includedChanges2 != null && includedChanges2.isNotEmpty()) {
+                val changes = includedChanges2.toList()
+                logger.info("[$actionName] 从 DataKey('Vcs.IncludedChanges') 获取到 ${changes.size} 个被勾选的变更")
+                return changes
+            }
+        } catch (t: Throwable) {
+            logger.info("[$actionName] 通过 DataKey 名称读取 INCLUDED_CHANGES 失败: ${t.message}")
+        }
+
+        // 方法4：Commit 面板当前清单中被包含的变更（不依赖面板引用；需结合包含模型进行过滤）
+        val projectRef = e.project
+        if (projectRef != null) {
+            val clm = ChangeListManager.getInstance(projectRef)
+            try {
+                // 通过反射尝试获取包含模型，并据此过滤真正被勾选的变更
+                val getInclusionMethod = clm.javaClass.methods.firstOrNull { it.name == "getInclusion" && it.parameterCount == 0 }
+                val inclusionModel = getInclusionMethod?.invoke(clm)
+                if (inclusionModel != null) {
+                    val isIncludedMethod = inclusionModel.javaClass.methods.firstOrNull { it.name == "isIncluded" && it.parameterCount == 1 }
+                    if (isIncludedMethod != null) {
+                        val defaultChanges = clm.defaultChangeList.changes
+                        val filtered = defaultChanges.filter { ch ->
+                            try {
+                                (isIncludedMethod.invoke(inclusionModel, ch) as? Boolean) == true
+                            } catch (_: Throwable) { false }
+                        }
+                        if (filtered.isNotEmpty()) {
+                            logger.info("[$actionName] 从 ChangeListManager + InclusionModel 过滤得到 ${filtered.size} 个已包含(勾选)的变更")
+                            return filtered
+                        }
+                        // 若默认清单为空，再尝试所有清单后过滤
+                        val all = clm.changeLists.flatMap { it.changes }
+                        val allFiltered = all.filter { ch ->
+                            try {
+                                (isIncludedMethod.invoke(inclusionModel, ch) as? Boolean) == true
+                            } catch (_: Throwable) { false }
+                        }
+                        if (allFiltered.isNotEmpty()) {
+                            logger.info("[$actionName] 从所有清单中过滤得到 ${allFiltered.size} 个已包含(勾选)的变更")
+                            return allFiltered
+                        }
+                    }
+                } else {
+                    logger.info("[$actionName] 未获取到包含模型(getInclusion)，为避免误计数，将跳过默认清单的全量返回")
+                }
+            } catch (t: Throwable) {
+                logger.info("[$actionName] 通过 ChangeListManager 过滤包含变更时发生异常: ${t.message}")
+            }
+        }
+
+        // 方法5：从虚拟文件回退到 Change（支持从项目视图等位置触发）
         val project = e.project
         val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
         if (project != null && virtualFiles != null && virtualFiles.isNotEmpty()) {
