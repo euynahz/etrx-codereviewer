@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
@@ -18,6 +19,7 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.VcsDataKeys
+import com.intellij.openapi.vcs.CheckinProjectPanel
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import kotlinx.coroutines.runBlocking
@@ -31,26 +33,47 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
     
     /**
      * 获取用户选中的变更文件。
-     * 兼容不同版本的 IDE：优先读取“选中/勾选”的变更，其次读取高亮选中，最后从虚拟文件回退到变更。
+     * 兼容不同版本的 IDE：优先读取“包含/勾选”的变更（用于本次提交），
+     * 然后读取明确选中的变更，最后从虚拟文件回退到变更。
      */
     protected fun getSelectedChanges(e: AnActionEvent): List<Change> {
         val actionName = this.javaClass.simpleName
         logger.info("[$actionName] === 开始获取用户选中的变更文件 ===")
 
-        // 方法1：优先使用 SELECTED_CHANGES（适用于变更树/提交面板里明确选中的变更）
+        // 方法1（优先）：Commit 面板的 CheckinProjectPanel（官方接口，返回“将要提交”的变更）
+        // 为兼容缺少常量 DataKey 的平台版本，这里通过名称创建 DataKey
+        val checkinPanelKey: DataKey<CheckinProjectPanel> = DataKey.create("CheckinProjectPanel")
+        val checkinPanel = e.getData(checkinPanelKey)
+        if (checkinPanel != null) {
+            val panelIncluded: Collection<Change> = checkinPanel.selectedChanges
+            if (panelIncluded.isNotEmpty()) {
+                val changes = panelIncluded.toList()
+                logger.info("[$actionName] 从 CheckinProjectPanel.selectedChanges 获取到 ${changes.size} 个已包含(勾选)的变更")
+                changes.forEachIndexed { index, change ->
+                    logger.info("[$actionName]   包含变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
+                }
+                logger.info("[$actionName] === 获取选中变更完成(方法1: CheckinProjectPanel) ===")
+                return changes
+            }
+            logger.info("[$actionName] CheckinProjectPanel.selectedChanges 为空或为空集合")
+        }
+
+        logger.info("[$actionName] 未从 CheckinProjectPanel 获取到包含变更，尝试回退方法")
+
+        // 方法2：SELECTED_CHANGES —— 变更树里明确选中的（可能未勾选为待提交）
         val selectedChanges: Array<Change>? = e.getData(VcsDataKeys.SELECTED_CHANGES)
         if (selectedChanges != null && selectedChanges.isNotEmpty()) {
             val changes = selectedChanges.toList()
-            logger.info("[$actionName] 从 VcsDataKeys.SELECTED_CHANGES 获取到 ${changes.size} 个选中/勾选的变更")
+            logger.info("[$actionName] 从 VcsDataKeys.SELECTED_CHANGES 获取到 ${changes.size} 个选中的变更")
             changes.forEachIndexed { index, change ->
                 logger.info("[$actionName]   选中变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
             }
-            logger.info("[$actionName] === 获取选中变更完成(方法1) ===")
+            logger.info("[$actionName] === 获取选中变更完成(方法2: SELECTED_CHANGES) ===")
             return changes
         }
         logger.info("[$actionName] VcsDataKeys.SELECTED_CHANGES 为空，尝试回退方法")
 
-        // 方法2：使用 CHANGES（高亮选中的变更，或某些视图中的选择）
+        // 方法3：CHANGES —— 高亮选中的变更
         val highlightedChanges: Array<Change>? = e.getData(VcsDataKeys.CHANGES)
         if (highlightedChanges != null && highlightedChanges.isNotEmpty()) {
             val changes = highlightedChanges.toList()
@@ -58,12 +81,12 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
             changes.forEachIndexed { index, change ->
                 logger.info("[$actionName]   选中变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
             }
-            logger.info("[$actionName] === 获取选中变更完成(方法2) ===")
+            logger.info("[$actionName] === 获取选中变更完成(方法3: CHANGES) ===")
             return changes
         }
         logger.info("[$actionName] VcsDataKeys.CHANGES 为空，尝试回退方法")
 
-        // 方法3：从虚拟文件回退到 Change（支持从项目视图等位置触发）
+        // 方法4：从虚拟文件回退到 Change（支持从项目视图等位置触发）
         val project = e.project
         val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
         if (project != null && virtualFiles != null && virtualFiles.isNotEmpty()) {
@@ -72,7 +95,7 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
             val changes = virtualFiles.mapNotNull { vf -> changeListManager.getChange(vf) }
             if (changes.isNotEmpty()) {
                 logger.info("[$actionName] 通过虚拟文件数组转换得到 ${changes.size} 个变更")
-                logger.info("[$actionName] === 获取选中变更完成(方法3) ===")
+                logger.info("[$actionName] === 获取选中变更完成(方法4: VIRTUAL_FILE_ARRAY) ===")
                 return changes
             } else {
                 logger.info("[$actionName] 无法从虚拟文件数组中找到对应的变更")
