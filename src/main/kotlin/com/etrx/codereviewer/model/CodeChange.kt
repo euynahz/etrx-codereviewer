@@ -111,7 +111,7 @@ data class CodeChange(
      * 说明：
      * - 使用经过充分验证的 java-diff-utils 库，避免自实现算法的边界问题
      * - 自动加入 ---/+++ 文件头与 @@ hunk
-     * - 使用“全文上下文”（context size = Int.MAX_VALUE），把整份文件带给 AI
+     * - 使用“全文上下文”：context size 取 max(oldLines.size, newLines.size)，避免整型溢出导致尾部上下文缺失
      */
     private fun generateUnifiedDiff(oldContent: String, newContent: String): String {
         // 统一换行，避免不同平台 CRLF/LF 导致的误判
@@ -119,12 +119,13 @@ data class CodeChange(
         val newLines = newContent.replace("\r\n", "\n").split("\n")
 
         val patch = DiffUtils.diff(oldLines, newLines)
+        // val contextSize = if (oldLines.size >= newLines.size) oldLines.size else newLines.size
         val diffLines = UnifiedDiffUtils.generateUnifiedDiff(
             filePath,            // old file path
             filePath,            // new file path
             oldLines,            // original
             patch,               // computed patch
-            Int.MAX_VALUE        // context size: 全文
+            6
         )
         // 追加一个换行以便在 ```diff 代码块中渲染更稳定
         return diffLines.joinToString("\n") + "\n"
