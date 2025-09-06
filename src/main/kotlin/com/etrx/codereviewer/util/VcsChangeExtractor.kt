@@ -115,7 +115,7 @@ object VcsChangeExtractor {
             "cs", "vb", "cpp", "c", "h", "hpp", "php", "rb", "go", "rs",
             "swift", "m", "mm", "sql", "xml", "html", "css", "scss", "sass",
             "json", "yaml", "yml", "properties", "gradle", "maven", "pom",
-            "sh", "bat", "ps1", "dockerfile", "md", "txt", "ini", "cfg", "conf"
+            "sh", "bat", "ps1", "dockerfile", "md", "txt", "ini", "cfg", "conf", "vue"
         )
         
         val extension = filePath.substringAfterLast('.', "").lowercase()
