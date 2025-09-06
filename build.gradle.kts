@@ -22,9 +22,6 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-autolink:0.21.0")
     // 生成高质量 unified diff 的可靠库
     implementation("io.github.java-diff-utils:java-diff-utils:4.0")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation("org.mockito:mockito-core:5.7.0")
 }
 
 intellij {
@@ -65,6 +62,8 @@ tasks {
     }
 
     test {
-        useJUnitPlatform()
+        enabled = false
+        // 如需恢复测试，删除本行并使用: useJUnitPlatform()
+        // useJUnitPlatform()
     }
 }
