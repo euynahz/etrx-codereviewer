@@ -111,7 +111,9 @@ data class CodeChange(
      * 说明：
      * - 使用经过充分验证的 java-diff-utils 库，避免自实现算法的边界问题
      * - 自动加入 ---/+++ 文件头与 @@ hunk
-     * - 使用“全文上下文”：context size 取 max(oldLines.size, newLines.size)，避免整型溢出导致尾部上下文缺失
+     * - 根据内容规模动态选择上下文：
+     *   - 当 old+new 的行数总和 ≤ 400 时，使用“全文上下文”，context size 取 max(oldLines.size, newLines.size)
+     *   - 当行数总和 > 400 时，使用“小上下文”diff（默认 6 行）
      */
     private fun generateUnifiedDiff(oldContent: String, newContent: String): String {
         // 统一换行，避免不同平台 CRLF/LF 导致的误判
@@ -119,13 +121,18 @@ data class CodeChange(
         val newLines = newContent.replace("\r\n", "\n").split("\n")
 
         val patch = DiffUtils.diff(oldLines, newLines)
-        // val contextSize = if (oldLines.size >= newLines.size) oldLines.size else newLines.size
+
+        // 依据规模选择 context：小于等于 400 行 -> 全文上下文；否则 -> 小上下文
+        val totalLines = oldLines.size + newLines.size
+        val fullContextSize = if (oldLines.size >= newLines.size) oldLines.size else newLines.size
+        val contextSize = if (totalLines <= 400) fullContextSize else 6
+
         val diffLines = UnifiedDiffUtils.generateUnifiedDiff(
             filePath,            // old file path
             filePath,            // new file path
             oldLines,            // original
             patch,               // computed patch
-            6
+            contextSize
         )
         // 追加一个换行以便在 ```diff 代码块中渲染更稳定
         return diffLines.joinToString("\n") + "\n"
