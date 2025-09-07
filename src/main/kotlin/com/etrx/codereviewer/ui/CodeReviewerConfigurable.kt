@@ -41,6 +41,7 @@ class CodeReviewerConfigurable : Configurable {
     // Prompt Template Fields
     private val promptTemplateCombo = JComboBox<PromptTemplate>()
     private val customPromptArea = JTextArea(10, 50)
+    private val resetTemplateButton = JButton("Reset")
     
     // Review Result File Configuration
     private val reviewResultFilePathField = JBTextField()
@@ -200,7 +201,9 @@ class CodeReviewerConfigurable : Configurable {
             val selected = promptTemplateCombo.selectedItem as? PromptTemplate
             selected?.let {
                 customPromptArea.text = it.template
-                customPromptArea.isEditable = !it.isDefault
+                // 允许编辑默认模板
+                customPromptArea.isEditable = true
+                updateResetButtonState()
             }
         }
 
@@ -216,9 +219,27 @@ class CodeReviewerConfigurable : Configurable {
             addActionListener { removeSelectedTemplate() }
         }
 
+        // Reset button for default templates
+        resetTemplateButton.addActionListener {
+            val selected = promptTemplateCombo.selectedItem as? PromptTemplate ?: return@addActionListener
+            val original = settingsService.getOriginalDefaultTemplate(selected.name)
+            if (original != null) {
+                customPromptArea.text = original.template
+            }
+            updateResetButtonState()
+        }
+
+        // Update reset button enablement when text changes
+        customPromptArea.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+            override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = updateResetButtonState()
+            override fun removeUpdate(e: javax.swing.event.DocumentEvent?) = updateResetButtonState()
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent?) = updateResetButtonState()
+        })
+
         val buttonPanel = JPanel().apply {
             add(addTemplateButton)
             add(removeTemplateButton)
+            add(resetTemplateButton)
         }
 
         return FormBuilder.createFormBuilder()
@@ -271,6 +292,22 @@ class CodeReviewerConfigurable : Configurable {
         updatePromptTemplateCombo()
     }
 
+    private fun updateResetButtonState() {
+        val selected = promptTemplateCombo.selectedItem as? PromptTemplate
+        if (selected == null) {
+            resetTemplateButton.isEnabled = false
+            return
+        }
+        val original = settingsService.getOriginalDefaultTemplate(selected.name)
+        if (original == null) {
+            // Custom template: reset button not applicable
+            resetTemplateButton.isEnabled = false
+            return
+        }
+        // Enable when current text differs from original
+        resetTemplateButton.isEnabled = customPromptArea.text != original.template
+    }
+
     private fun updatePromptTemplateCombo() {
         val templates = settingsService.getAvailablePromptTemplates()
         val selectedTemplate = settingsService.getSelectedPromptTemplate()
@@ -281,7 +318,8 @@ class CodeReviewerConfigurable : Configurable {
         templates.find { it.name == selectedTemplate.name }?.let {
             promptTemplateCombo.selectedItem = it
             customPromptArea.text = it.template
-            customPromptArea.isEditable = !it.isDefault
+            customPromptArea.isEditable = true
+            updateResetButtonState()
         }
     }
 
@@ -484,8 +522,25 @@ class CodeReviewerConfigurable : Configurable {
             settingsService.updateAIModelConfig(config)
 
             val selectedTemplate = promptTemplateCombo.selectedItem as? PromptTemplate
-            selectedTemplate?.let {
-                settingsService.setSelectedPromptTemplate(it.name)
+            selectedTemplate?.let { selected ->
+                settingsService.setSelectedPromptTemplate(selected.name)
+                val original = settingsService.getOriginalDefaultTemplate(selected.name)
+                if (original != null) {
+                    // Default template: write override if changed; clear if same
+                    val edited = customPromptArea.text
+                    if (edited == original.template) {
+                        settingsService.clearDefaultTemplateOverride(selected.name)
+                    } else {
+                        settingsService.setDefaultTemplateOverride(selected.name, edited)
+                    }
+                } else {
+                    // Custom template: update if content changed
+                    if (customPromptArea.text != selected.template) {
+                        settingsService.updateCustomPromptTemplate(
+                            PromptTemplate(selected.name, customPromptArea.text, selected.description, isDefault = false)
+                        )
+                    }
+                }
             }
             
             // Save result file path
@@ -493,6 +548,9 @@ class CodeReviewerConfigurable : Configurable {
             if (filePath.isNotEmpty()) {
                 settingsService.setReviewResultFilePath(filePath)
             }
+            
+            // Refresh templates to reflect overrides and maintain selection
+            updatePromptTemplateCombo()
         } else {
             Messages.showErrorDialog(
                 "Invalid configuration. Please check all fields.",
@@ -620,7 +678,8 @@ class CodeReviewerConfigurable : Configurable {
             if (defaultTemplate != null) {
                 promptTemplateCombo.selectedItem = defaultTemplate
                 customPromptArea.text = defaultTemplate.template
-                customPromptArea.isEditable = !defaultTemplate.isDefault
+                customPromptArea.isEditable = true
+                updateResetButtonState()
             }
 
             Messages.showInfoMessage(

@@ -23,6 +23,8 @@ data class CodeReviewerState(
     var aiRetryCount: Int = 3,
     var selectedPromptTemplate: String = "简洁代码评审",
     var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
+    // Overrides for built-in default templates: identified by name, content replaces bundled template
+    var defaultTemplateOverrides: MutableList<PromptTemplateData> = mutableListOf(),
     var reviewResultFilePath: String = ".ai-code-review" // 默认为.ai-code-review文件夹
 )
 
@@ -121,20 +123,38 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     }
     
     fun getAvailablePromptTemplates(): List<PromptTemplate> {
-        val defaultTemplates = listOf(
+        // Base default templates
+        val defaultTemplates = mutableListOf(
             PromptTemplate.DEFAULT_TEMPLATE,
             PromptTemplate.BE_TEMPLATE,
             PromptTemplate.FE_TEMPLATE,
             PromptTemplate.DOC_TEMPLATE,
             PromptTemplate.DETAILED_TEMPLATE
         )
+
+        // Apply overrides if any
+        if (state.defaultTemplateOverrides.isNotEmpty()) {
+            val overrideMap = state.defaultTemplateOverrides.associateBy { it.name }
+            for (i in defaultTemplates.indices) {
+                val t = defaultTemplates[i]
+                val ov = overrideMap[t.name]
+                if (ov != null) {
+                    defaultTemplates[i] = PromptTemplate(
+                        name = t.name,
+                        template = ov.template,
+                        description = if (ov.description.isNotBlank()) ov.description else t.description,
+                        isDefault = true
+                    )
+                }
+            }
+        }
         
         val customTemplates = state.customPromptTemplates.map { data ->
             PromptTemplate(
                 name = data.name,
                 template = data.template,
                 description = data.description,
-                isDefault = data.isDefault
+                isDefault = false
             )
         }
         
@@ -173,6 +193,34 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         }
     }
     
+    fun setDefaultTemplateOverride(name: String, template: String, description: String = "") {
+        // Replace or add override
+        val existing = state.defaultTemplateOverrides.find { it.name == name }
+        if (existing != null) {
+            existing.template = template
+            if (description.isNotBlank()) existing.description = description
+            existing.isDefault = true
+        } else {
+            state.defaultTemplateOverrides.add(
+                PromptTemplateData(name = name, template = template, description = description, isDefault = true)
+            )
+        }
+    }
+
+    fun clearDefaultTemplateOverride(name: String) {
+        state.defaultTemplateOverrides.removeIf { it.name == name }
+    }
+
+    fun getOriginalDefaultTemplate(name: String): PromptTemplate? {
+        return listOf(
+            PromptTemplate.DEFAULT_TEMPLATE,
+            PromptTemplate.BE_TEMPLATE,
+            PromptTemplate.FE_TEMPLATE,
+            PromptTemplate.DOC_TEMPLATE,
+            PromptTemplate.DETAILED_TEMPLATE
+        ).find { it.name == name }
+    }
+
     fun getSelectedPromptTemplate(): PromptTemplate {
         return getAvailablePromptTemplates().find { it.name == state.selectedPromptTemplate }
             ?: PromptTemplate.DEFAULT_TEMPLATE
