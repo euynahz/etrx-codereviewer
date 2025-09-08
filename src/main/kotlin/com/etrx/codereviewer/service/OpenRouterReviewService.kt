@@ -11,6 +11,8 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -94,9 +96,24 @@ ${prompt.replace("{code}", codeText)}
             progressIndicator?.text = "[$templateName] Waiting for OpenRouter response..."
             progressIndicator?.fraction = 0.6
 
-            client.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
+            val call = client.newCall(request)
+            // cancel HTTP call if user cancels the progress
+            val watcherJob = if (progressIndicator != null) {
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    while (true) {
+                        if (progressIndicator.isCanceled) {
+                            try { call.cancel() } catch (_: Throwable) {}
+                            break
+                        }
+                        kotlinx.coroutines.delay(100)
+                    }
+                }
+            } else null
+
+            try {
+                call.execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
                     logger.warn("OpenRouter 响应失败: ${response.code} - $responseBody")
                     return@withContext ReviewResult(
                         id = reviewId,
@@ -125,7 +142,23 @@ ${prompt.replace("{code}", codeText)}
                     status = ReviewResult.ReviewStatus.SUCCESS
                 )
             }
+            } finally {
+                watcherJob?.cancel()
+            }
         } catch (e: Exception) {
+            // If the user cancelled the progress (or the HTTP call was cancelled), treat as CANCELLED
+            if (progressIndicator?.isCanceled == true || (e is java.io.IOException && e.message?.contains("canceled", ignoreCase = true) == true)) {
+                logger.info("OpenRouter 请求因用户取消而中止: ${e.message}")
+                return@withContext ReviewResult(
+                    id = reviewId,
+                    reviewContent = "",
+                    modelUsed = getModelConfig().modelName,
+                    promptTemplate = templateName,
+                    codeChanges = codeChanges,
+                    status = ReviewResult.ReviewStatus.CANCELLED,
+                    errorMessage = "Code review was cancelled by user"
+                )
+            }
             logger.error("OpenRouter 评审异常", e)
             return@withContext ReviewResult(
                 id = reviewId,

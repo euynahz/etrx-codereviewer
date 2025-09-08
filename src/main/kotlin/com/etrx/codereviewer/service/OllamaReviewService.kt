@@ -8,6 +8,8 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -136,7 +138,7 @@ ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
                         )
                     )
 
-                    response = sendOllamaRequest(ollamaRequest, config)
+                    response = sendOllamaRequest(ollamaRequest, config, progressIndicator)
 
                     if (response.isSuccessful) {
                         logger.info("请求成功 - 尝试次数: $attempt, 模型: $currentModel")
@@ -152,6 +154,19 @@ ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
                         }
                     }
                 } catch (e: Exception) {
+                    // If user cancelled, stop immediately and return a CANCELLED result
+                    if (progressIndicator?.isCanceled == true) {
+                        logger.info("检测到用户取消，正在中止评审请求并返回取消状态")
+                        return@withContext ReviewResult(
+                            id = reviewId,
+                            reviewContent = "",
+                            modelUsed = config.modelName,
+                            promptTemplate = prompt,
+                            codeChanges = codeChanges,
+                            status = ReviewResult.ReviewStatus.CANCELLED,
+                            errorMessage = "Code review was cancelled by user"
+                        )
+                    }
                     lastException = e
                     val errorType = when (e) {
                         is java.net.SocketTimeoutException -> "超时"
@@ -478,7 +493,8 @@ ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
 
     private suspend fun sendOllamaRequest(
         request: OllamaRequest,
-        config: AIModelConfig
+        config: AIModelConfig,
+        progressIndicator: ProgressIndicator? = null
     ): Response = withContext(Dispatchers.IO) {
         
         val jsonBody = objectMapper.writeValueAsString(request)
@@ -498,21 +514,42 @@ ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
         // Create client with configured timeout
         val client = createHttpClient(config.timeout)
         val startTime = System.currentTimeMillis()
-        val response = client.newCall(httpRequest).execute()
-        val duration = System.currentTimeMillis() - startTime
-        
-        logger.info("评审请求响应 - HTTP ${response.code}, 耗时: ${duration}ms")
-        
-        if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "No error body"
-            logger.error("AI评审请求失败 - HTTP ${response.code}: ${response.message}")
-            logger.error("错误响应体: $errorBody")
-            // Don't consume response body here, let caller handle it
-        }
 
-        // 移除这个日志语句，因为它会消耗response body
-        // logger.info("响应：${response.body?.string()}")
-        
-        response
+        // Create the call so we can cancel it if user cancels the progress
+        val call = client.newCall(httpRequest)
+
+        // Watch for cancellation from progress indicator and cancel the HTTP call
+        val watcherJob = if (progressIndicator != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                while (true) {
+                    if (progressIndicator.isCanceled) {
+                        try { call.cancel() } catch (_: Throwable) {}
+                        break
+                    }
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+        } else null
+
+        try {
+            val response = call.execute()
+            val duration = System.currentTimeMillis() - startTime
+            
+            logger.info("评审请求响应 - HTTP ${response.code}, 耗时: ${duration}ms")
+            
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "No error body"
+                logger.error("AI评审请求失败 - HTTP ${response.code}: ${response.message}")
+                logger.error("错误响应体: $errorBody")
+                // Don't consume response body here, let caller handle it
+            }
+            
+            // 移除这个日志语句，因为它会消耗response body
+            // logger.info("响应：${response.body?.string()}")
+            
+            response
+        } finally {
+            watcherJob?.cancel()
+        }
     }
 }
