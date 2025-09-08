@@ -306,60 +306,95 @@ ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
         }
     }
     
-    override suspend fun testConnection(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun testConnection(progressIndicator: ProgressIndicator?): Boolean = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        
+
         try {
             val config = getModelConfig()
             logger.info("=== AI服务连接测试开始 ===")
             logger.info("测试配置 - Endpoint: ${config.endpoint}, Model: ${config.modelName}")
             logger.info("测试URL: ${config.getFullUrl()}")
             logger.info("超时配置 - 连接: 30s, 读取: ${(config.timeout / 1000L).coerceAtLeast(60L).coerceAtMost(180L)}s, 写入: 30s")
-            
+
             val testRequest = OllamaRequest(
                 model = config.modelName,
                 prompt = "Hello, please respond with 'OK' if you can see this message.",
                 stream = false,
                 options = OllamaOptions(num_predict = 10)
             )
-            
+
             logger.info("发送测试请求 - 提示词: '${testRequest.prompt}'")
-            
-            val response = sendTestRequest(testRequest, config)
-            val isSuccessful = response.isSuccessful
-            val totalTime = System.currentTimeMillis() - startTime
-            
-            if (isSuccessful) {
-                logger.info("连接测试成功 - HTTP ${response.code}")
-                val responseBody = response.body?.string() ?: ""
-                logger.info("测试响应体长度: ${responseBody.length} 字符")
-                logger.info("测试耗时: ${totalTime}ms")
-                
-                if (responseBody.isNotEmpty()) {
-                    try {
-                        val ollamaResponse = objectMapper.readValue<OllamaResponse>(responseBody)
-                        val testContent = ollamaResponse.getContent()
-                        
-                        // 简化的测试响应处理
-                        if (testContent.isNotEmpty()) {
-                            logger.info("AI响应内容: '${testContent.take(100)}${if(testContent.length > 100) "..." else ""}'")
-                        } else {
-                            logger.info("AI响应内容: '空响应'")
+
+            // 直接在此处发起 HTTP 请求并监听取消
+            val jsonBody = objectMapper.writeValueAsString(testRequest)
+            val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
+            val httpRequest = Request.Builder()
+                .url(config.getFullUrl())
+                .post(requestBody)
+                .build()
+
+            val client = createTestHttpClient(config)
+            val call = client.newCall(httpRequest)
+
+            val watcherJob = if (progressIndicator != null) {
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    while (true) {
+                        if (progressIndicator.isCanceled) {
+                            try { call.cancel() } catch (_: Throwable) {}
+                            break
                         }
-                    } catch (e: Exception) {
-                        logger.warn("解析测试响应失败，但连接成功: ${e.message}")
+                        kotlinx.coroutines.delay(100)
                     }
                 }
-            } else {
-                logger.error("连接测试失败 - HTTP ${response.code}: ${response.message}")
-                logger.info("失败耗时: ${totalTime}ms")
+            } else null
+
+            try {
+                call.execute().use { response ->
+                    val isSuccessful = response.isSuccessful
+                    val totalTime = System.currentTimeMillis() - startTime
+
+                    if (isSuccessful) {
+                        logger.info("连接测试成功 - HTTP ${response.code}")
+                        val responseBody = response.body?.string() ?: ""
+                        logger.info("测试响应体长度: ${responseBody.length} 字符")
+                        logger.info("测试耗时: ${totalTime}ms")
+
+                        if (responseBody.isNotEmpty()) {
+                            try {
+                                val ollamaResponse = objectMapper.readValue<OllamaResponse>(responseBody)
+                                val testContent = ollamaResponse.getContent()
+                                if (testContent.isNotEmpty()) {
+                                    logger.info("AI响应内容: '${testContent.take(100)}${if(testContent.length > 100) "..." else ""}'")
+                                } else {
+                                    logger.info("AI响应内容: '空响应'")
+                                }
+                            } catch (e: Exception) {
+                                logger.warn("解析测试响应失败，但连接成功: ${e.message}")
+                            }
+                        }
+                    } else {
+                        logger.error("连接测试失败 - HTTP ${response.code}: ${response.message}")
+                        logger.info("失败耗时: ${totalTime}ms")
+                    }
+
+                    logger.info("=== AI服务连接测试结束 ===\n")
+                    return@withContext isSuccessful
+                }
+            } catch (e: Exception) {
+                if (progressIndicator?.isCanceled == true) {
+                    logger.info("连接测试因用户取消被中止: ${e.message}")
+                    return@withContext false
+                }
+                val totalTime = System.currentTimeMillis() - startTime
+                logger.error("连接测试异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}", e)
+                logger.info("异常耗时: ${totalTime}ms")
+                logger.info("=== AI服务连接测试异常结束 ===\n")
+                return@withContext false
+            } finally {
+                watcherJob?.cancel()
             }
-            
-            logger.info("=== AI服务连接测试结束 ===\n")
-            return@withContext isSuccessful
         } catch (e: Exception) {
             val totalTime = System.currentTimeMillis() - startTime
-            
             logger.error("连接测试异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}", e)
             logger.info("异常耗时: ${totalTime}ms")
             logger.info("=== AI服务连接测试异常结束 ===\n")

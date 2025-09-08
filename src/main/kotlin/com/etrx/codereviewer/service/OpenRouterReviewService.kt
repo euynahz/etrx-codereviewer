@@ -88,8 +88,6 @@ ${prompt.replace("{code}", codeText)}
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer ${config.apiKey}")
-                .addHeader("HTTP-Referer", "https://jetbrains.local")
-                .addHeader("X-Title", "ETRX Code Reviewer")
                 .post(body)
                 .build()
 
@@ -172,7 +170,7 @@ ${prompt.replace("{code}", codeText)}
         }
     }
 
-    override suspend fun testConnection(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun testConnection(progressIndicator: ProgressIndicator?): Boolean = withContext(Dispatchers.IO) {
         val config = getModelConfig()
         if (config.apiKey.isBlank()) return@withContext false
         val client = createHttpClient(config.timeout)
@@ -188,13 +186,34 @@ ${prompt.replace("{code}", codeText)}
             .addHeader("Authorization", "Bearer ${config.apiKey}")
             .post(body)
             .build()
+
+        val call = client.newCall(request)
+        // 监听取消，及时终止 HTTP 调用
+        val watcherJob = if (progressIndicator != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                while (true) {
+                    if (progressIndicator.isCanceled) {
+                        try { call.cancel() } catch (_: Throwable) {}
+                        break
+                    }
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+        } else null
+
         try {
-            client.newCall(request).execute().use { resp ->
+            call.execute().use { resp ->
                 return@withContext resp.isSuccessful
             }
         } catch (e: Exception) {
+            if (progressIndicator?.isCanceled == true) {
+                logger.info("OpenRouter 测试连接因用户取消而中止: ${e.message}")
+                return@withContext false
+            }
             logger.warn("OpenRouter 测试失败: ${e.message}")
             return@withContext false
+        } finally {
+            watcherJob?.cancel()
         }
     }
 

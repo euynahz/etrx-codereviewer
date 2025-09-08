@@ -315,10 +315,8 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
 
     
     private fun initializeDefaultTemplates() {
-        if (state.customPromptTemplates.isEmpty()) {
-            // Ensure we have some default state
-            state.selectedPromptTemplate = PromptTemplate.DEFAULT_TEMPLATE.name
-        }
+        // Do not override user's selected template here.
+        // This method should only ensure directories exist or seed data if truly first run.
         // Ensure templates directory exists
         try {
             val dir = java.io.File(state.templatesDir)

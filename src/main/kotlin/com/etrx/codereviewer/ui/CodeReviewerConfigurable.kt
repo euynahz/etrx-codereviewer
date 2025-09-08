@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
+import com.intellij.ui.components.JBPasswordField
 import com.intellij.util.ui.FormBuilder
 import kotlinx.coroutines.runBlocking
 import java.awt.BorderLayout
@@ -31,7 +32,7 @@ class CodeReviewerConfigurable : Configurable {
 
     // AI Model Configuration Fields
     private val providerCombo = JComboBox(arrayOf("Ollama", "OpenRouter"))
-    private val apiKeyField = JBTextField()
+    private val apiKeyField = JBPasswordField()
     private val modelNameCombo = JComboBox<String>()
     private val modelNameField = JBTextField()
     private val modelCard = JPanel(java.awt.CardLayout())
@@ -51,6 +52,10 @@ class CodeReviewerConfigurable : Configurable {
     
     // Review Result File Configuration
     private val reviewResultFilePathField = JBTextField()
+
+    // API Key row controls for conditional visibility
+    private val apiKeyLabel = JBLabel("API Key:")
+    private val apiKeyPanel = JPanel(BorderLayout())
 
     override fun getDisplayName(): String = "Code Reviewer"
 
@@ -76,10 +81,26 @@ class CodeReviewerConfigurable : Configurable {
         val providerPanel = JPanel(BorderLayout()).apply {
             add(providerCombo, BorderLayout.CENTER)
         }
-        val apiKeyPanel = JPanel(BorderLayout()).apply {
-            add(apiKeyField, BorderLayout.CENTER)
-            apiKeyField.toolTipText = "OpenRouter API Key (required when using OpenRouter)"
+        apiKeyPanel.layout = BorderLayout()
+        apiKeyPanel.removeAll()
+        // Add show/hide toggle for API key
+        val toggleVisibility = JCheckBox("Show").apply {
+            toolTipText = "Show/Hide API Key"
+            isSelected = false
+            addActionListener {
+                val def = UIManager.getLookAndFeelDefaults().get("PasswordField.echoChar")
+                val echo = (def as? Char) ?: '*'
+                apiKeyField.echoChar = if (isSelected) 0.toChar() else echo
+            }
         }
+        // Initialize echo char properly (in case LAF default is zero)
+        if (apiKeyField.echoChar.toInt() == 0) {
+            val def = UIManager.getLookAndFeelDefaults().get("PasswordField.echoChar")
+            apiKeyField.echoChar = (def as? Char) ?: '*'
+        }
+        apiKeyPanel.add(apiKeyField, BorderLayout.CENTER)
+        apiKeyPanel.add(toggleVisibility, BorderLayout.EAST)
+        apiKeyField.toolTipText = "OpenRouter API Key (required when using OpenRouter)"
 
         // Model selection/input using CardLayout
         modelCard.add(modelNameCombo, "OLLAMA")
@@ -190,9 +211,14 @@ class CodeReviewerConfigurable : Configurable {
             add(resetToDefaultsButton, BorderLayout.WEST)
         }
 
+        // Ensure initial visibility of API Key row based on provider
+        val isOpenRouterInit = (providerCombo.selectedItem as? String) == "OpenRouter"
+        apiKeyLabel.isVisible = isOpenRouterInit
+        apiKeyPanel.isVisible = isOpenRouterInit
+
         return FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Provider:"), providerPanel)
-            .addLabeledComponent(JBLabel("API Key:"), apiKeyPanel)
+            .addLabeledComponent(apiKeyLabel, apiKeyPanel)
             .addLabeledComponent(JBLabel("Endpoint URL:"), endpointPanel)
             .addLabeledComponent(JBLabel("Connection Test:"), testPanel)
             .addLabeledComponent(JBLabel("Model:"), modelPanel)
@@ -328,6 +354,11 @@ class CodeReviewerConfigurable : Configurable {
         refreshModelList(config.modelName)
 
         updatePromptTemplateCombo()
+
+        // Ensure provider-dependent UI visibility updated when UI already constructed
+        if (apiKeyPanel.parent != null) {
+            onProviderChanged()
+        }
     }
 
     private fun updateResetButtonState() {
@@ -431,7 +462,7 @@ class CodeReviewerConfigurable : Configurable {
 
     private fun testConnection() {
             // Enforce API key when OpenRouter is selected
-            if ((providerCombo.selectedItem as? String) == "OpenRouter" && apiKeyField.text.isBlank()) {
+            if ((providerCombo.selectedItem as? String) == "OpenRouter" && getApiKeyText().isBlank()) {
                 Messages.showErrorDialog("OpenRouter provider requires API Key.", "Missing API Key")
                 return
             }
@@ -468,7 +499,7 @@ class CodeReviewerConfigurable : Configurable {
                     }
                     
                     logger.info("开始执行连接测试...")
-                    val testResult = reviewService.testConnection()
+                    val testResult = reviewService.testConnection(progressIndicator)
                     
                     if (progressIndicator?.isCanceled == true) {
                         logger.info("用户在测试过程中取消了连接测试")
@@ -531,6 +562,8 @@ class CodeReviewerConfigurable : Configurable {
         }
     }
 
+    private fun getApiKeyText(): String = String(apiKeyField.password).trim()
+
     private fun getCurrentConfig(): AIModelConfig {
         val provider = if ((providerCombo.selectedItem as? String) == "OpenRouter") Provider.OPENROUTER else Provider.OLLAMA
         val modelName = if (provider == Provider.OLLAMA) (modelNameCombo.selectedItem as? String ?: "qwen3:8b") else (modelNameField.text.ifBlank { "qwen/qwen3-coder:free" })
@@ -543,7 +576,7 @@ class CodeReviewerConfigurable : Configurable {
             timeout = timeoutSpinner.value as Int,
             retryCount = retryCountSpinner.value as Int,
             provider = provider,
-            apiKey = apiKeyField.text
+            apiKey = getApiKeyText()
         )
     }
 
@@ -710,6 +743,7 @@ class CodeReviewerConfigurable : Configurable {
             apiKeyField.text = ""
             val cl = modelCard.layout as java.awt.CardLayout
             cl.show(modelCard, "OLLAMA")
+            onProviderChanged()
         val result = Messages.showYesNoDialog(
             "Are you sure you want to reset all settings to their default values?\nThis action cannot be undone.",
             "Reset to Defaults",
@@ -771,6 +805,8 @@ class CodeReviewerConfigurable : Configurable {
         // Toggle controls by provider
         refreshModelsButton.isEnabled = !isOpenRouter
         apiKeyField.isEnabled = isOpenRouter
+        apiKeyLabel.isVisible = isOpenRouter
+        apiKeyPanel.isVisible = isOpenRouter
 
         // Adjust endpoint and api path defaults if fields look incompatible/blank
         if (isOpenRouter) {

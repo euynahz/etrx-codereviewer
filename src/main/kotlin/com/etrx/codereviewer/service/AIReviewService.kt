@@ -29,7 +29,7 @@ interface AIReviewService {
      * Test connection to the AI service
      * @return true if connection is successful, false otherwise
      */
-    suspend fun testConnection(): Boolean
+    suspend fun testConnection(progressIndicator: ProgressIndicator? = null): Boolean
     
     /**
      * Get the current model configuration
