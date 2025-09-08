@@ -25,7 +25,7 @@ data class CodeReviewerState(
     var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
     // Overrides for built-in default templates: identified by name, content replaces bundled template
     var defaultTemplateOverrides: MutableList<PromptTemplateData> = mutableListOf(),
-    var reviewResultFilePath: String = ".ai-code-review" // 默认为.ai-code-review文件夹
+    var reviewResultFilePath: String = ".ai-codereview" // 默认为.ai-codereview文件夹
 )
 
 /**
