@@ -7,11 +7,17 @@
     AI-powered code review plugin for JetBrains IDEs.
     
     Features:
+
     - AI code review with customizable prompts
-    - Support for Ollama models (default: qwen3:8b)
+
+    - Support for Ollama models (default: qwen3:8b) and OpenRouter
+
     - Markdown result display
+
     - Integration with VCS commit panel
+
     - Configurable AI model settings
+
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

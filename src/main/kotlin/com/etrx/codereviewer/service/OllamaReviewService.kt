@@ -64,8 +64,7 @@ class OllamaReviewService : AIReviewService {
             progressIndicator?.fraction = 0.1
             
             val codeContent = buildCodeContent(codeChanges)
-            var fullPrompt = prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)
-            fullPrompt = """
+            var fullPrompt = """
 # ${templateName}
 ## !!!重要系统要求!!!
 1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。

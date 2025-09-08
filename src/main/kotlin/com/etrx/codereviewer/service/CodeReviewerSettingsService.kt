@@ -2,6 +2,7 @@ package com.etrx.codereviewer.service
 
 import com.etrx.codereviewer.model.AIModelConfig
 import com.etrx.codereviewer.model.PromptTemplate
+import com.etrx.codereviewer.model.Provider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -19,13 +20,16 @@ data class CodeReviewerState(
     var aiApiPath: String = "/api/generate",
     var aiTemperature: Double = 0.7,
     var aiMaxTokens: Int = 20480,
-    var aiTimeout: Int = 300000, // 减少超时时间到30秒
+    var aiTimeout: Int = 300000,
     var aiRetryCount: Int = 3,
+    var provider: String = Provider.OLLAMA.name,
+    var openRouterApiKey: String = "",
     var selectedPromptTemplate: String = "简洁代码评审",
+    var templatesDir: String = System.getProperty("user.home") + "\\.etrx-ai-codereview\\jetbrains\\etrx-ai-templates",
     var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
     // Overrides for built-in default templates: identified by name, content replaces bundled template
     var defaultTemplateOverrides: MutableList<PromptTemplateData> = mutableListOf(),
-    var reviewResultFilePath: String = ".ai-codereview" // 默认为.ai-codereview文件夹
+    var reviewResultFilePath: String = ".ai-codereview"
 )
 
 /**
@@ -47,6 +51,16 @@ data class PromptTemplateData(
     storages = [Storage("codereviewer-settings.xml")]
 )
 class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> {
+    private fun saveTemplateToDirectory(template: PromptTemplate) {
+        try {
+            val dir = java.io.File(state.templatesDir)
+            if (!dir.exists()) dir.mkdirs()
+            val file = java.io.File(dir, template.name + ".md")
+            file.writeText(template.template)
+        } catch (e: Exception) {
+            logger.warn("保存模板到目录失败: ${e.message}")
+        }
+    }
     
     private var state = CodeReviewerState()
     private val logger = Logger.getInstance(CodeReviewerSettingsService::class.java)
@@ -75,10 +89,10 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
      */
     private fun ensureDefaultValues() {
         if (state.aiEndpoint.isBlank()) {
-            state.aiEndpoint = "http://192.168.66.181:11434"
+            state.aiEndpoint = if (state.provider == Provider.OPENROUTER.name) "https://openrouter.ai" else "http://192.168.66.181:11434"
         }
         if (state.aiApiPath.isBlank()) {
-            state.aiApiPath = "/api/generate"
+            state.aiApiPath = if (state.provider == Provider.OPENROUTER.name) "api/v1/chat/completions" else "/api/generate"
         }
         if (state.aiModelName.isBlank()) {
             state.aiModelName = "qwen3:8b"
@@ -108,7 +122,9 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             temperature = state.aiTemperature,
             maxTokens = state.aiMaxTokens,
             timeout = state.aiTimeout,
-            retryCount = state.aiRetryCount
+            retryCount = state.aiRetryCount,
+            provider = Provider.valueOf(state.provider),
+            apiKey = state.openRouterApiKey
         )
     }
     
@@ -120,6 +136,10 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         state.aiMaxTokens = config.maxTokens
         state.aiTimeout = config.timeout
         state.aiRetryCount = config.retryCount
+        state.provider = config.provider.name
+        if (config.provider == Provider.OPENROUTER) {
+            state.openRouterApiKey = config.apiKey
+        }
     }
     
     fun getAvailablePromptTemplates(): List<PromptTemplate> {
@@ -131,7 +151,7 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             PromptTemplate.DOC_TEMPLATE,
             PromptTemplate.DETAILED_TEMPLATE
         )
-
+        
         // Apply overrides if any
         if (state.defaultTemplateOverrides.isNotEmpty()) {
             val overrideMap = state.defaultTemplateOverrides.associateBy { it.name }
@@ -149,6 +169,21 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             }
         }
         
+        // Load templates from templatesDir (*.md)
+        val fileTemplates = mutableListOf<PromptTemplate>()
+        try {
+            val dir = java.io.File(state.templatesDir)
+            if (dir.exists() && dir.isDirectory) {
+                dir.listFiles { f -> f.isFile && f.name.endsWith(".md", ignoreCase = true) }?.forEach { file ->
+                    val name = file.name.removeSuffix(".md")
+                    val content = file.readText()
+                    fileTemplates.add(PromptTemplate(name = name, template = content, description = "", isDefault = false))
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("加载模板目录失败: ${state.templatesDir}, ${e.message}")
+        }
+        
         val customTemplates = state.customPromptTemplates.map { data ->
             PromptTemplate(
                 name = data.name,
@@ -158,7 +193,13 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             )
         }
         
-        return defaultTemplates + customTemplates
+        // Merge: fileTemplates override defaults/custom by same name
+        val merged = linkedMapOf<String, PromptTemplate>()
+        (defaultTemplates + customTemplates + fileTemplates).forEach { t ->
+            merged[t.name] = t
+        }
+        
+        return merged.values.toList()
     }
     
     fun addCustomPromptTemplate(template: PromptTemplate) {
@@ -169,10 +210,38 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             isDefault = false
         )
         state.customPromptTemplates.add(templateData)
+        // Persist to templates directory
+        saveTemplateToDirectory(template)
     }
     
     fun removeCustomPromptTemplate(templateName: String) {
+        // 1) 移除状态中的记录（如果存在）
         state.customPromptTemplates.removeIf { it.name == templateName }
+
+        // 2) 无论状态中是否存在，都尝试删除 templatesDir 下对应文件
+        try {
+            val dir = java.io.File(state.templatesDir)
+            val file = java.io.File(dir, "$templateName.md")
+            if (file.exists()) {
+                val deleted = file.delete()
+                if (!deleted) {
+                    // 文件可能被占用，退化为 JVM 退出时删除
+                    file.deleteOnExit()
+                    logger.warn("立即删除模板文件失败，已标记为退出时删除: ${file.absolutePath}")
+                } else {
+                    logger.info("已删除模板文件: ${file.absolutePath}")
+                }
+            } else {
+                logger.info("模板文件不存在，无需删除: ${file.absolutePath}")
+            }
+        } catch (e: Exception) {
+            logger.warn("删除模板文件失败: ${e.message}")
+        }
+
+        // 3) 如果被删除的模板当前被选中，恢复为默认模板
+        if (state.selectedPromptTemplate == templateName) {
+            state.selectedPromptTemplate = PromptTemplate.DEFAULT_TEMPLATE.name
+        }
     }
     
     /**
@@ -190,7 +259,9 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             // 如果不存在，则添加为新模板
             logger.warn("模板不存在，添加为新模板: ${template.name}")
             addCustomPromptTemplate(template)
+            return
         }
+        saveTemplateToDirectory(template)
     }
     
     fun setDefaultTemplateOverride(name: String, template: String, description: String = "") {
@@ -247,6 +318,15 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         if (state.customPromptTemplates.isEmpty()) {
             // Ensure we have some default state
             state.selectedPromptTemplate = PromptTemplate.DEFAULT_TEMPLATE.name
+        }
+        // Ensure templates directory exists
+        try {
+            val dir = java.io.File(state.templatesDir)
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+        } catch (e: Exception) {
+            logger.warn("创建模板目录失败: ${state.templatesDir}, ${e.message}")
         }
     }
 }

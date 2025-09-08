@@ -4,6 +4,8 @@ import com.etrx.codereviewer.model.CodeChange
 import com.etrx.codereviewer.model.ReviewResult
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
+import com.etrx.codereviewer.service.OpenRouterReviewService
+import com.etrx.codereviewer.service.AIReviewService
 import com.etrx.codereviewer.service.ReviewResultFileService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -280,7 +282,12 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         }
         
         val settingsService = CodeReviewerSettingsService.getInstance()
-        val reviewService = project.getService(OllamaReviewService::class.java)
+        val modelConfig = settingsService.getAIModelConfig()
+                val reviewService: AIReviewService = if (modelConfig.provider.name == com.etrx.codereviewer.model.Provider.OLLAMA.name) {
+                    project.getService(OllamaReviewService::class.java)
+                } else {
+                    project.getService(com.etrx.codereviewer.service.OpenRouterReviewService::class.java)
+                }
         val promptTemplate = settingsService.getSelectedPromptTemplate()
         
         logger.info("使用提示模板: ${promptTemplate.name}")

@@ -4,6 +4,8 @@ import com.etrx.codereviewer.model.AIModelConfig
 import com.etrx.codereviewer.model.PromptTemplate
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
+import com.etrx.codereviewer.service.OpenRouterReviewService
+import com.etrx.codereviewer.model.Provider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.Configurable
@@ -28,7 +30,11 @@ class CodeReviewerConfigurable : Configurable {
     private var mainPanel: JPanel? = null
 
     // AI Model Configuration Fields
+    private val providerCombo = JComboBox(arrayOf("Ollama", "OpenRouter"))
+    private val apiKeyField = JBTextField()
     private val modelNameCombo = JComboBox<String>()
+    private val modelNameField = JBTextField()
+    private val modelCard = JPanel(java.awt.CardLayout())
     private val refreshModelsButton = JButton("Refresh")
     private val resetToDefaultsButton = JButton("Reset to Defaults")
     private val endpointField = JBTextField()
@@ -66,14 +72,29 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun createAIConfigPanel(): JPanel {
-        // Setup model selection panel
+        // Provider selection + API key panel
+        val providerPanel = JPanel(BorderLayout()).apply {
+            add(providerCombo, BorderLayout.CENTER)
+        }
+        val apiKeyPanel = JPanel(BorderLayout()).apply {
+            add(apiKeyField, BorderLayout.CENTER)
+            apiKeyField.toolTipText = "OpenRouter API Key (required when using OpenRouter)"
+        }
+
+        // Model selection/input using CardLayout
+        modelCard.add(modelNameCombo, "OLLAMA")
+        modelCard.add(modelNameField, "OPENROUTER")
         val modelPanel = JPanel(BorderLayout()).apply {
-            add(modelNameCombo, BorderLayout.CENTER)
+            add(modelCard, BorderLayout.CENTER)
             add(refreshModelsButton, BorderLayout.EAST)
         }
 
         refreshModelsButton.addActionListener {
             refreshModelList()
+        }
+
+        providerCombo.addActionListener {
+            onProviderChanged()
         }
 
         // Setup endpoint panel with reset button
@@ -170,9 +191,11 @@ class CodeReviewerConfigurable : Configurable {
         }
 
         return FormBuilder.createFormBuilder()
+            .addLabeledComponent(JBLabel("Provider:"), providerPanel)
+            .addLabeledComponent(JBLabel("API Key:"), apiKeyPanel)
             .addLabeledComponent(JBLabel("Endpoint URL:"), endpointPanel)
             .addLabeledComponent(JBLabel("Connection Test:"), testPanel)
-            .addLabeledComponent(JBLabel("Model Name:"), modelPanel)
+            .addLabeledComponent(JBLabel("Model:"), modelPanel)
             .addLabeledComponent(JBLabel("API Path:"), apiPathPanel)
             .addLabeledComponent(JBLabel("Temperature:"), temperaturePanel)
             .addLabeledComponent(JBLabel("Max Tokens:"), maxTokensPanel)
@@ -273,6 +296,21 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun initializeFields() {
+            // Initialize provider and model input cards
+            val saved = settingsService.getAIModelConfig()
+            providerCombo.selectedItem = if (saved.provider == Provider.OPENROUTER) "OpenRouter" else "Ollama"
+            apiKeyField.text = saved.apiKey
+            val cl = modelCard.layout as java.awt.CardLayout
+            if (saved.provider == Provider.OPENROUTER) {
+                cl.show(modelCard, "OPENROUTER")
+                modelNameField.text = if (saved.modelName.isNotBlank()) saved.modelName else "qwen/qwen3-coder:free"
+                refreshModelsButton.isEnabled = false
+                if (saved.endpoint.isBlank()) endpointField.text = "https://openrouter.ai"
+                if (saved.apiPath.isBlank()) apiPathField.text = "api/v1/chat/completions"
+            } else {
+                cl.show(modelCard, "OLLAMA")
+                refreshModelsButton.isEnabled = true
+            }
         val config = settingsService.getAIModelConfig()
 
         // Set other fields first
@@ -392,6 +430,11 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun testConnection() {
+            // Enforce API key when OpenRouter is selected
+            if ((providerCombo.selectedItem as? String) == "OpenRouter" && apiKeyField.text.isBlank()) {
+                Messages.showErrorDialog("OpenRouter provider requires API Key.", "Missing API Key")
+                return
+            }
         val testPanel = findTestPanel()
         val testResultArea = testPanel?.getClientProperty("testResultArea") as? JTextArea
 
@@ -416,7 +459,7 @@ class CodeReviewerConfigurable : Configurable {
                 
                 settingsService.updateAIModelConfig(tempConfig)
 
-                val reviewService = OllamaReviewService()
+                val reviewService = if (tempConfig.provider == Provider.OLLAMA) OllamaReviewService() else OpenRouterReviewService()
 
                 val result = runBlocking {
                     if (progressIndicator?.isCanceled == true) {
@@ -489,14 +532,18 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun getCurrentConfig(): AIModelConfig {
+        val provider = if ((providerCombo.selectedItem as? String) == "OpenRouter") Provider.OPENROUTER else Provider.OLLAMA
+        val modelName = if (provider == Provider.OLLAMA) (modelNameCombo.selectedItem as? String ?: "qwen3:8b") else (modelNameField.text.ifBlank { "qwen/qwen3-coder:free" })
         return AIModelConfig(
-            modelName = modelNameCombo.selectedItem as? String ?: "qwen3:8b",
+            modelName = modelName,
             endpoint = endpointField.text,
             apiPath = apiPathField.text,
             temperature = temperatureSpinner.value as Double,
             maxTokens = maxTokensSpinner.value as Int,
             timeout = timeoutSpinner.value as Int,
-            retryCount = retryCountSpinner.value as Int
+            retryCount = retryCountSpinner.value as Int,
+            provider = provider,
+            apiKey = apiKeyField.text
         )
     }
 
@@ -517,6 +564,12 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     override fun apply() {
+            // Validate API key when provider is OpenRouter
+            val cfg = getCurrentConfig()
+            if (cfg.provider == Provider.OPENROUTER && cfg.apiKey.isBlank()) {
+                Messages.showErrorDialog("OpenRouter provider requires API Key.", "Configuration Error")
+                return
+            }
         val config = getCurrentConfig()
         if (config.isValid()) {
             settingsService.updateAIModelConfig(config)
@@ -653,6 +706,10 @@ class CodeReviewerConfigurable : Configurable {
      * Reset all configuration fields to their default values
      */
     private fun resetToDefaults() {
+            providerCombo.selectedItem = "Ollama"
+            apiKeyField.text = ""
+            val cl = modelCard.layout as java.awt.CardLayout
+            cl.show(modelCard, "OLLAMA")
         val result = Messages.showYesNoDialog(
             "Are you sure you want to reset all settings to their default values?\nThis action cannot be undone.",
             "Reset to Defaults",
@@ -686,6 +743,50 @@ class CodeReviewerConfigurable : Configurable {
                 "All settings have been reset to their default values.",
                 "Reset Complete"
             )
+        }
+    }
+
+    private fun onProviderChanged() {
+        val selected = providerCombo.selectedItem as? String
+        val isOpenRouter = selected == "OpenRouter"
+
+        // Switch model input card
+        val cl = modelCard.layout as java.awt.CardLayout
+        if (isOpenRouter) {
+            cl.show(modelCard, "OPENROUTER")
+            // Default model for OpenRouter if empty
+            if (modelNameField.text.isBlank()) {
+                modelNameField.text = "qwen/qwen3-coder:free"
+            }
+        } else {
+            cl.show(modelCard, "OLLAMA")
+            // Ensure model list is available; leave selection as-is
+            if ((modelNameCombo.model.size == 0)) {
+                // Populate with a minimal fallback list; real refresh happens via button
+                listOf("qwen3:8b", "llama3:8b", "mistral:7b").forEach { modelNameCombo.addItem(it) }
+                modelNameCombo.selectedItem = "qwen3:8b"
+            }
+        }
+
+        // Toggle controls by provider
+        refreshModelsButton.isEnabled = !isOpenRouter
+        apiKeyField.isEnabled = isOpenRouter
+
+        // Adjust endpoint and api path defaults if fields look incompatible/blank
+        if (isOpenRouter) {
+            if (endpointField.text.isBlank() || endpointField.text.startsWith("http://")) {
+                endpointField.text = "https://openrouter.ai"
+            }
+            if (apiPathField.text.isBlank() || apiPathField.text == "/api/generate") {
+                apiPathField.text = "api/v1/chat/completions"
+            }
+        } else {
+            if (endpointField.text.isBlank() || endpointField.text.contains("openrouter", ignoreCase = true)) {
+                endpointField.text = "http://192.168.66.181:11434"
+            }
+            if (apiPathField.text.isBlank() || apiPathField.text.contains("chat/completions", ignoreCase = true)) {
+                apiPathField.text = "/api/generate"
+            }
         }
     }
 }

@@ -10,7 +10,9 @@ data class AIModelConfig(
     val temperature: Double = 0.7,
     val maxTokens: Int = 2048,
     val timeout: Int = 120000, // milliseconds (2 minutes)
-    val retryCount: Int = 3
+    val retryCount: Int = 3,
+    val provider: Provider = Provider.OLLAMA,
+    val apiKey: String = ""
 ) {
     fun getFullUrl(): String {
         // 安全构建URL，移除可能的多余字符
@@ -26,6 +28,8 @@ data class AIModelConfig(
                temperature in 0.0..2.0 &&
                maxTokens > 0 &&
                timeout > 0 &&
-               retryCount >= 0
+               retryCount >= 0 &&
+               // When using OpenRouter, API key must be provided
+               (provider != Provider.OPENROUTER || apiKey.isNotBlank())
     }
 }
