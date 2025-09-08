@@ -34,13 +34,6 @@
             id="com.etrx.codereviewer.settings"
             displayName="Code Reviewer"/>
         
-        <!-- Register Template Settings page so user can see and edit default template -->
-        <applicationConfigurable
-            parentId="tools"
-            instance="com.example.plugin.settings.TemplateSettingsConfigurable"
-            id="com.etrx.codereviewer.templateSettings"
-            displayName="Prompt Templates"/>
-        
         <!-- Application Service -->
         <applicationService 
             serviceImplementation="com.etrx.codereviewer.service.CodeReviewerSettingsService"/>
