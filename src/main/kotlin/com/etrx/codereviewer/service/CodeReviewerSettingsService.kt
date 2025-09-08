@@ -29,7 +29,9 @@ data class CodeReviewerState(
     var customPromptTemplates: MutableList<PromptTemplateData> = mutableListOf(),
     // Overrides for built-in default templates: identified by name, content replaces bundled template
     var defaultTemplateOverrides: MutableList<PromptTemplateData> = mutableListOf(),
-    var reviewResultFilePath: String = ".ai-codereview"
+    var reviewResultFilePath: String = ".ai-codereview",
+    // 记录最近一次选择的 Ollama 模型，用于设置界面回显
+    var lastSelectedOllamaModel: String = ""
 )
 
 /**
@@ -92,7 +94,8 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
             state.aiEndpoint = if (state.provider == Provider.OPENROUTER.name) "https://openrouter.ai" else "http://192.168.66.181:11434"
         }
         if (state.aiApiPath.isBlank()) {
-            state.aiApiPath = if (state.provider == Provider.OPENROUTER.name) "api/v1/chat/completions" else "/api/generate"
+            // 统一为带前导斜杠的路径，避免与 UI 回显差异导致的 isModified 误判或覆盖
+            state.aiApiPath = if (state.provider == Provider.OPENROUTER.name) "/api/v1/chat/completions" else "/api/generate"
         }
         if (state.aiModelName.isBlank()) {
             state.aiModelName = "qwen3:8b"
@@ -115,15 +118,22 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
     }
     
     fun getAIModelConfig(): AIModelConfig {
+        val providerEnum = Provider.valueOf(state.provider)
+        val effectiveModelName =
+            if (providerEnum == Provider.OLLAMA && state.lastSelectedOllamaModel.isNotBlank())
+                state.lastSelectedOllamaModel
+            else
+                state.aiModelName
+
         return AIModelConfig(
-            modelName = state.aiModelName,
+            modelName = effectiveModelName,
             endpoint = state.aiEndpoint,
             apiPath = state.aiApiPath,
             temperature = state.aiTemperature,
             maxTokens = state.aiMaxTokens,
             timeout = state.aiTimeout,
             retryCount = state.aiRetryCount,
-            provider = Provider.valueOf(state.provider),
+            provider = providerEnum,
             apiKey = state.openRouterApiKey
         )
     }
@@ -137,8 +147,15 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         state.aiTimeout = config.timeout
         state.aiRetryCount = config.retryCount
         state.provider = config.provider.name
-        if (config.provider == Provider.OPENROUTER) {
-            state.openRouterApiKey = config.apiKey
+
+        when (config.provider) {
+            Provider.OLLAMA -> {
+                // 记录最近选择的 Ollama 模型，确保设置界面重开时能够正确回显
+                state.lastSelectedOllamaModel = config.modelName
+            }
+            Provider.OPENROUTER -> {
+                state.openRouterApiKey = config.apiKey
+            }
         }
     }
     

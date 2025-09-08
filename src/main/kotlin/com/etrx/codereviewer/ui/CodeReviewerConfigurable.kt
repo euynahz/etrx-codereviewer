@@ -25,11 +25,18 @@ import javax.swing.*
  * Settings configurable for the Code Reviewer plugin
  */
 class CodeReviewerConfigurable : Configurable {
-
+    
     private val logger = Logger.getInstance(CodeReviewerConfigurable::class.java)
     private val settingsService = CodeReviewerSettingsService.getInstance()
     private var mainPanel: JPanel? = null
 
+    // Init/refresh coordination
+    private var initSessionId: Long = 0L
+    private var initIntendedModel: String? = null
+    private var refreshGeneration: Long = 0L
+    private var latestAppliedGeneration: Long = 0L
+    private var refreshInFlight: Boolean = false
+    
     // AI Model Configuration Fields
     private val providerCombo = JComboBox(arrayOf("Ollama", "OpenRouter"))
     private val apiKeyField = JBPasswordField()
@@ -60,6 +67,10 @@ class CodeReviewerConfigurable : Configurable {
     override fun getDisplayName(): String = "Code Reviewer"
 
     override fun createComponent(): JComponent {
+        // Start a new init session and reset coordination flags
+        initSessionId += 1
+        initIntendedModel = null
+        refreshInFlight = false
         initializeFields()
 
         val aiConfigPanel = createAIConfigPanel()
@@ -332,7 +343,7 @@ class CodeReviewerConfigurable : Configurable {
                 modelNameField.text = if (saved.modelName.isNotBlank()) saved.modelName else "qwen/qwen3-coder:free"
                 refreshModelsButton.isEnabled = false
                 if (saved.endpoint.isBlank()) endpointField.text = "https://openrouter.ai"
-                if (saved.apiPath.isBlank()) apiPathField.text = "api/v1/chat/completions"
+                if (saved.apiPath.isBlank()) apiPathField.text = "/api/v1/chat/completions"
             } else {
                 cl.show(modelCard, "OLLAMA")
                 refreshModelsButton.isEnabled = true
@@ -350,8 +361,18 @@ class CodeReviewerConfigurable : Configurable {
         // Set result file path
         reviewResultFilePathField.text = settingsService.getReviewResultFilePath()
 
-        // Initialize model combo with saved selection
-        refreshModelList(config.modelName)
+        // Initialize model combo with saved selection (only for Ollama)
+        if (config.provider == Provider.OLLAMA) {
+            val intended = initIntendedModel ?: config.modelName.also { initIntendedModel = it }
+            if (refreshInFlight) {
+                logger.info("初始化会话#$initSessionId：已有刷新进行中，跳过重复刷新，预选=$intended")
+            } else {
+                logger.info("初始化会话#$initSessionId：提供方为 OLLAMA，执行模型列表刷新，预选=$intended")
+                refreshModelList(intended)
+            }
+        } else {
+            logger.info("初始化会话#$initSessionId：提供方为 OPENROUTER，跳过模型列表刷新")
+        }
 
         updatePromptTemplateCombo()
 
@@ -650,6 +671,17 @@ class CodeReviewerConfigurable : Configurable {
     }
 
     private fun refreshModelList(preselectedModel: String? = null) {
+        // Provider guard at call-time too
+        val currentProviderIsOllamaAtStart = (providerCombo.selectedItem as? String) != "OpenRouter"
+        if (!currentProviderIsOllamaAtStart) {
+            logger.info("刷新请求被忽略：当前提供方为 OPENROUTER，未触发模型刷新")
+            return
+        }
+
+        val gen = (++refreshGeneration)
+        refreshInFlight = true
+        logger.info("=== 配置界面刷新模型列表开始 (gen=$gen) ===")
+
         refreshModelsButton.isEnabled = false
         refreshModelsButton.text = "Loading..."
 
@@ -658,7 +690,8 @@ class CodeReviewerConfigurable : Configurable {
             
             try {
                 val config = getCurrentConfig()
-                logger.info("=== 配置界面刷新模型列表开始 ===")
+                // keep legacy log for context but include generation
+                logger.info("=== 配置界面刷新模型列表开始 === (gen=$gen)")
                 logger.info("刷新配置 - Endpoint: ${config.endpoint}, API: ${config.apiPath}")
                 logger.info("预选模型: ${preselectedModel ?: "无"}")
                 
@@ -674,63 +707,117 @@ class CodeReviewerConfigurable : Configurable {
                 logger.info("模型列表: ${models.joinToString(", ")}")
 
                 SwingUtilities.invokeLater {
-                    val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
-                    modelNameCombo.removeAllItems()
-
-                    models.forEach { model ->
-                        modelNameCombo.addItem(model)
+                    // Skip outdated generations
+                    if (gen != refreshGeneration) {
+                        logger.info("跳过过期刷新结果 (gen=$gen, 最新=${refreshGeneration})")
+                        return@invokeLater
                     }
+                    // Ensure provider still OLLAMA before applying
+                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != "OpenRouter"
+                    if (!currentProviderIsOllama) {
+                        logger.info("刷新结果返回时提供方已切换为 OPENROUTER，跳过模型下拉更新")
+                    } else {
+                        val currentSelectionRaw = preselectedModel ?: (modelNameCombo.selectedItem as? String)
+                        val currentSelection = currentSelectionRaw?.trim()
+                        modelNameCombo.removeAllItems()
 
-                    // Restore selection or set default
-                    if (currentSelection != null && models.contains(currentSelection)) {
-                        modelNameCombo.selectedItem = currentSelection
-                        logger.info("恢复模型选择: $currentSelection")
-                    } else if (models.isNotEmpty()) {
-                        modelNameCombo.selectedItem = models.first()
-                        logger.info("设置默认模型: ${models.first()}")
+                        models.forEach { model ->
+                            modelNameCombo.addItem(model)
+                        }
+
+                        // Selection restoration logic
+                        val modelsSet = models.toSet()
+                        var selected: String? = null
+                        var note = ""
+                        if (currentSelection != null) {
+                            if (modelsSet.contains(currentSelection)) {
+                                selected = currentSelection
+                                note = "exact"
+                            } else {
+                                val ci = models.firstOrNull { it.equals(currentSelection, ignoreCase = true) }
+                                if (ci != null) {
+                                    selected = ci
+                                    note = "case-insensitive"
+                                } else {
+                                    val base = currentSelection.substringBefore('@').trim()
+                                    val prefix = base.substringBefore(':').ifBlank { base }
+                                    val prefixHit = models.firstOrNull { it.startsWith(prefix, ignoreCase = true) }
+                                    if (prefixHit != null) {
+                                        selected = prefixHit
+                                        note = "prefix"
+                                    }
+                                }
+                            }
+                        }
+                        if (selected == null && models.isNotEmpty()) {
+                            selected = models.first()
+                            note = if (currentSelection == null) "default(no-preselect)" else "default(fallback)"
+                        }
+
+                        if (selected != null) {
+                            modelNameCombo.selectedItem = selected
+                            when (note) {
+                                "exact" -> logger.info("恢复模型选择: $selected")
+                                "case-insensitive" -> logger.info("恢复模型选择(忽略大小写): $selected (原值: ${currentSelection})")
+                                "prefix" -> logger.info("恢复模型选择(前缀匹配): $selected (原值: ${currentSelection})")
+                                else -> logger.info("设置默认模型: $selected (原值: ${currentSelection ?: "无"})")
+                            }
+                        }
+
+                        refreshModelsButton.isEnabled = true
+                        refreshModelsButton.text = "Refresh"
+                        logger.info("模型下拉框更新完成 (gen=$gen)")
                     }
-
-                    refreshModelsButton.isEnabled = true
-                    refreshModelsButton.text = "Refresh"
-                    
-                    logger.info("模型下拉框更新完成")
+                    latestAppliedGeneration = gen
+                    if (gen == refreshGeneration) {
+                        refreshInFlight = false
+                    }
                 }
                 
-                logger.info("=== 配置界面刷新模型列表完成 ===\n")
+                logger.info("=== 配置界面刷新模型列表完成 === (gen=$gen)\n")
             } catch (e: Exception) {
                 val totalTime = System.currentTimeMillis() - startTime
                 
                 logger.info("刷新模型列表异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}, 耗时: ${totalTime}ms")
                 
                 SwingUtilities.invokeLater {
-                    // Fallback to default models
-                    val defaultModels = listOf(
-                        "qwen3:8b", "qwen:7b", "qwen:14b", "llama3:8b", "llama3:70b",
-                        "codellama:7b", "codellama:13b", "mistral:7b", "deepseek-coder:6.7b"
-                    )
-
-                    val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
-                    modelNameCombo.removeAllItems()
-
-                    defaultModels.forEach { model ->
-                        modelNameCombo.addItem(model)
-                    }
-
-                    if (currentSelection != null && defaultModels.contains(currentSelection)) {
-                        modelNameCombo.selectedItem = currentSelection
-                        logger.info("使用默认模型列表，恢复选择: $currentSelection")
+                    // Only apply fallback if still on OLLAMA
+                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != "OpenRouter"
+                    if (!currentProviderIsOllama) {
+                        logger.info("刷新异常时提供方已为 OPENROUTER，跳过默认模型回退更新")
                     } else {
-                        modelNameCombo.selectedItem = "qwen3:8b"
-                        logger.info("使用默认模型列表，设置默认选择: qwen3:8b")
-                    }
+                        // Fallback to default models
+                        val defaultModels = listOf(
+                            "qwen3:8b", "qwen:7b", "qwen:14b", "llama3:8b", "llama3:70b",
+                            "codellama:7b", "codellama:13b", "mistral:7b", "deepseek-coder:6.7b"
+                        )
 
-                    refreshModelsButton.isEnabled = true
-                    refreshModelsButton.text = "Refresh"
-                    
-                    logger.info("已降级到默认模型列表: ${defaultModels.joinToString(", ")}")
+                        val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
+                        modelNameCombo.removeAllItems()
+
+                        defaultModels.forEach { model ->
+                            modelNameCombo.addItem(model)
+                        }
+
+                        if (currentSelection != null && defaultModels.contains(currentSelection)) {
+                            modelNameCombo.selectedItem = currentSelection
+                            logger.info("使用默认模型列表，恢复选择: $currentSelection")
+                        } else {
+                            modelNameCombo.selectedItem = "qwen3:8b"
+                            logger.info("使用默认模型列表，设置默认选择: qwen3:8b")
+                        }
+
+                        refreshModelsButton.isEnabled = true
+                        refreshModelsButton.text = "Refresh"
+                        
+                        logger.info("已降级到默认模型列表: ${defaultModels.joinToString(", ")}")
+                    }
+                    if (gen == refreshGeneration) {
+                        refreshInFlight = false
+                    }
                 }
                 
-                logger.error("=== 配置界面刷新模型列表异常结束 ===\n")
+                logger.error("=== 配置界面刷新模型列表异常结束 === (gen=$gen)\n")
             }
         }
     }
@@ -814,7 +901,7 @@ class CodeReviewerConfigurable : Configurable {
                 endpointField.text = "https://openrouter.ai"
             }
             if (apiPathField.text.isBlank() || apiPathField.text == "/api/generate") {
-                apiPathField.text = "api/v1/chat/completions"
+                apiPathField.text = "/api/v1/chat/completions"
             }
         } else {
             if (endpointField.text.isBlank() || endpointField.text.contains("openrouter", ignoreCase = true)) {
