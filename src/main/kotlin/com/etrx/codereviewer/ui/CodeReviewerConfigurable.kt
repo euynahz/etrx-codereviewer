@@ -5,6 +5,7 @@ import com.etrx.codereviewer.model.PromptTemplate
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
 import com.etrx.codereviewer.service.OllamaReviewService
 import com.etrx.codereviewer.service.OpenRouterReviewService
+import com.etrx.codereviewer.util.I18nUtil
 import com.etrx.codereviewer.model.Provider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -43,8 +44,8 @@ class CodeReviewerConfigurable : Configurable {
     private val modelNameCombo = JComboBox<String>()
     private val modelNameField = JBTextField()
     private val modelCard = JPanel(java.awt.CardLayout())
-    private val refreshModelsButton = JButton("Refresh")
-    private val resetToDefaultsButton = JButton("Reset to Defaults")
+    private val refreshModelsButton = JButton(I18nUtil.message("button.refresh"))
+    private val resetToDefaultsButton = JButton(I18nUtil.message("button.resetToDefaults"))
     private val endpointField = JBTextField()
     private val apiPathField = JBTextField()
     private val temperatureSpinner = JSpinner(SpinnerNumberModel(0.7, 0.0, 2.0, 0.1))
@@ -55,16 +56,16 @@ class CodeReviewerConfigurable : Configurable {
     // Prompt Template Fields
     private val promptTemplateCombo = JComboBox<PromptTemplate>()
     private val customPromptArea = JTextArea(10, 50)
-    private val resetTemplateButton = JButton("Reset")
+    private val resetTemplateButton = JButton(I18nUtil.message("button.reset"))
     
     // Review Result File Configuration
     private val reviewResultFilePathField = JBTextField()
 
     // API Key row controls for conditional visibility
-    private val apiKeyLabel = JBLabel("API Key:")
+    private val apiKeyLabel = JBLabel(I18nUtil.message("label.apiKey"))
     private val apiKeyPanel = JPanel(BorderLayout())
 
-    override fun getDisplayName(): String = "Code Reviewer"
+    override fun getDisplayName(): String = I18nUtil.message("configurable.displayName")
 
     override fun createComponent(): JComponent {
         // Start a new init session and reset coordination flags
@@ -78,9 +79,9 @@ class CodeReviewerConfigurable : Configurable {
 
         mainPanel = JPanel(BorderLayout()).apply {
             val tabPane = JTabbedPane()
-            tabPane.addTab("AI Configuration", aiConfigPanel)
-            tabPane.addTab("Prompt Templates", promptConfigPanel)
-            tabPane.addTab("Result Output", createResultConfigPanel())
+            tabPane.addTab(I18nUtil.message("tab.aiConfiguration"), aiConfigPanel)
+            tabPane.addTab(I18nUtil.message("tab.promptTemplates"), promptConfigPanel)
+            tabPane.addTab(I18nUtil.message("tab.resultOutput"), createResultConfigPanel())
             add(tabPane, BorderLayout.CENTER)
         }
 
@@ -95,8 +96,8 @@ class CodeReviewerConfigurable : Configurable {
         apiKeyPanel.layout = BorderLayout()
         apiKeyPanel.removeAll()
         // Add show/hide toggle for API key
-        val toggleVisibility = JCheckBox("Show").apply {
-            toolTipText = "Show/Hide API Key"
+        val toggleVisibility = JCheckBox(I18nUtil.message("checkbox.show")).apply {
+            toolTipText = I18nUtil.message("tooltip.showHideApiKey")
             isSelected = false
             addActionListener {
                 val def = UIManager.getLookAndFeelDefaults().get("PasswordField.echoChar")
@@ -111,7 +112,7 @@ class CodeReviewerConfigurable : Configurable {
         }
         apiKeyPanel.add(apiKeyField, BorderLayout.CENTER)
         apiKeyPanel.add(toggleVisibility, BorderLayout.EAST)
-        apiKeyField.toolTipText = "OpenRouter API Key (required when using OpenRouter)"
+        apiKeyField.toolTipText = I18nUtil.message("tooltip.apiKey")
 
         // Model selection/input using CardLayout
         modelCard.add(modelNameCombo, "OLLAMA")
@@ -132,21 +133,21 @@ class CodeReviewerConfigurable : Configurable {
         // Setup endpoint panel with reset button
         val endpointPanel = JPanel(BorderLayout()).apply {
             add(endpointField, BorderLayout.CENTER)
-            val endpointResetBtn = JButton("Default").apply {
+            val endpointResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
-                    endpointField.text = "http://192.168.66.181:11434"
+                    endpointField.text = I18nUtil.message("default.endpoint.ollama")
                 }
             }
             add(endpointResetBtn, BorderLayout.EAST)
         }
 
         // Setup connection test panel
-        val testButton = JButton("Test Connection").apply {
+        val testButton = JButton(I18nUtil.message("button.testConnection")).apply {
             addActionListener { testConnection() }
         }
         val testResultArea = JTextArea(3, 50).apply {
             isEditable = false
-            text = "Click 'Test Connection' to verify AI service connectivity."
+            text = I18nUtil.message("test.connection.description")
             lineWrap = true
             wrapStyleWord = true
         }
@@ -161,9 +162,9 @@ class CodeReviewerConfigurable : Configurable {
         // Setup API path panel with reset button
         val apiPathPanel = JPanel(BorderLayout()).apply {
             add(apiPathField, BorderLayout.CENTER)
-            val apiPathResetBtn = JButton("Default").apply {
+            val apiPathResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
-                    apiPathField.text = "/api/generate"
+                    apiPathField.text = I18nUtil.message("default.apiPath.ollama")
                 }
             }
             add(apiPathResetBtn, BorderLayout.EAST)
@@ -172,7 +173,7 @@ class CodeReviewerConfigurable : Configurable {
         // Setup temperature panel with reset button
         val temperaturePanel = JPanel(BorderLayout()).apply {
             add(temperatureSpinner, BorderLayout.CENTER)
-            val tempResetBtn = JButton("Default").apply {
+            val tempResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
                     temperatureSpinner.value = 0.7
                 }
@@ -183,7 +184,7 @@ class CodeReviewerConfigurable : Configurable {
         // Setup max tokens panel with reset button
         val maxTokensPanel = JPanel(BorderLayout()).apply {
             add(maxTokensSpinner, BorderLayout.CENTER)
-            val tokensResetBtn = JButton("Default").apply {
+            val tokensResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
                     maxTokensSpinner.value = 2048
                 }
@@ -194,9 +195,9 @@ class CodeReviewerConfigurable : Configurable {
         // Setup timeout panel with reset button
         val timeoutPanel = JPanel(BorderLayout()).apply {
             add(timeoutSpinner, BorderLayout.CENTER)
-            val timeoutResetBtn = JButton("Default").apply {
+            val timeoutResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
-                    timeoutSpinner.value = 30000
+                    timeoutSpinner.value = 120000
                 }
             }
             add(timeoutResetBtn, BorderLayout.EAST)
@@ -205,7 +206,7 @@ class CodeReviewerConfigurable : Configurable {
         // Setup retry count panel with reset button
         val retryPanel = JPanel(BorderLayout()).apply {
             add(retryCountSpinner, BorderLayout.CENTER)
-            val retryResetBtn = JButton("Default").apply {
+            val retryResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
                     retryCountSpinner.value = 3
                 }
@@ -223,22 +224,22 @@ class CodeReviewerConfigurable : Configurable {
         }
 
         // Ensure initial visibility of API Key row based on provider
-        val isOpenRouterInit = (providerCombo.selectedItem as? String) == "OpenRouter"
+            val isOpenRouterInit = (providerCombo.selectedItem as? String) == I18nUtil.message("provider.openRouter")
         apiKeyLabel.isVisible = isOpenRouterInit
         apiKeyPanel.isVisible = isOpenRouterInit
 
         return FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("Provider:"), providerPanel)
-            .addLabeledComponent(apiKeyLabel, apiKeyPanel)
-            .addLabeledComponent(JBLabel("Endpoint URL:"), endpointPanel)
-            .addLabeledComponent(JBLabel("Connection Test:"), testPanel)
-            .addLabeledComponent(JBLabel("Model:"), modelPanel)
-            .addLabeledComponent(JBLabel("API Path:"), apiPathPanel)
-            .addLabeledComponent(JBLabel("Temperature:"), temperaturePanel)
-            .addLabeledComponent(JBLabel("Max Tokens:"), maxTokensPanel)
-            .addLabeledComponent(JBLabel("Timeout (ms):"), timeoutPanel)
-            .addLabeledComponent(JBLabel("Retry Count:"), retryPanel)
-            .addComponent(resetPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.provider")), providerPanel)
+                .addLabeledComponent(apiKeyLabel, apiKeyPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.endpointUrl")), endpointPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.connectionTest")), testPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.model")), modelPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.apiPath")), apiPathPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.temperature")), temperaturePanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.maxTokens")), maxTokensPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.timeout")), timeoutPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.retryCount")), retryPanel)
+                .addComponent(resetPanel)
             .addComponentFillVertically(JPanel(), 0)
             .panel
     }
@@ -261,7 +262,7 @@ class CodeReviewerConfigurable : Configurable {
             val selected = promptTemplateCombo.selectedItem as? PromptTemplate
             selected?.let {
                 customPromptArea.text = it.template
-                // 允许编辑默认模板
+                // ${I18nUtil.message("settings.comment.allow.edit.default")}
                 customPromptArea.isEditable = true
                 updateResetButtonState()
             }
@@ -271,11 +272,11 @@ class CodeReviewerConfigurable : Configurable {
         customPromptArea.wrapStyleWord = true
         val scrollPane = JBScrollPane(customPromptArea)
 
-        val addTemplateButton = JButton("Add Custom Template").apply {
+        val addTemplateButton = JButton(I18nUtil.message("button.addCustomTemplate")).apply {
             addActionListener { showAddTemplateDialog() }
         }
 
-        val removeTemplateButton = JButton("Remove Template").apply {
+        val removeTemplateButton = JButton(I18nUtil.message("button.removeTemplate")).apply {
             addActionListener { removeSelectedTemplate() }
         }
 
@@ -303,8 +304,8 @@ class CodeReviewerConfigurable : Configurable {
         }
 
         return FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("Select Template:"), promptTemplateCombo)
-            .addLabeledComponent(JBLabel("Template Content:"), scrollPane)
+            .addLabeledComponent(JBLabel(I18nUtil.message("label.selectTemplate")), promptTemplateCombo)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.templateContent")), scrollPane)
             .addComponent(buttonPanel)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -314,19 +315,19 @@ class CodeReviewerConfigurable : Configurable {
         // Setup result file path panel with reset button
         val filePathPanel = JPanel(BorderLayout()).apply {
             add(reviewResultFilePathField, BorderLayout.CENTER)
-            val filePathResetBtn = JButton("Default").apply {
+            val filePathResetBtn = JButton(I18nUtil.message("button.default")).apply {
                 addActionListener {
-                    reviewResultFilePathField.text = "ai-code-review.md"
+                    reviewResultFilePathField.text = I18nUtil.message("default.resultFilePath")
                 }
             }
             add(filePathResetBtn, BorderLayout.EAST)
         }
         
-        val helpText = JLabel("<html><font color='gray'><i>结果文件路径支持相对路径（相对于项目根目录）或绝对路径。<br/>" +
+        val helpText = JLabel("<html><font color='gray'><i>" + I18nUtil.message("label.resultFilePath.help") + "<br/>" +
                 "</font></html>")
         
         return FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("评审结果文件路径:"), filePathPanel)
+            .addLabeledComponent(JBLabel(I18nUtil.message("label.resultFilePath")), filePathPanel)
             .addComponent(helpText)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -335,15 +336,15 @@ class CodeReviewerConfigurable : Configurable {
     private fun initializeFields() {
             // Initialize provider and model input cards
             val saved = settingsService.getAIModelConfig()
-            providerCombo.selectedItem = if (saved.provider == Provider.OPENROUTER) "OpenRouter" else "Ollama"
+            providerCombo.selectedItem = if (saved.provider == Provider.OPENROUTER) I18nUtil.message("provider.openRouter") else I18nUtil.message("provider.ollama")
             apiKeyField.text = saved.apiKey
             val cl = modelCard.layout as java.awt.CardLayout
             if (saved.provider == Provider.OPENROUTER) {
                 cl.show(modelCard, "OPENROUTER")
-                modelNameField.text = if (saved.modelName.isNotBlank()) saved.modelName else "qwen/qwen3-coder:free"
+                modelNameField.text = if (saved.modelName.isNotBlank()) saved.modelName else I18nUtil.message("default.model.openRouter")
                 refreshModelsButton.isEnabled = false
-                if (saved.endpoint.isBlank()) endpointField.text = "https://openrouter.ai"
-                if (saved.apiPath.isBlank()) apiPathField.text = "/api/v1/chat/completions"
+                if (saved.endpoint.isBlank()) endpointField.text = I18nUtil.message("default.endpoint.openRouter")
+                if (saved.apiPath.isBlank()) apiPathField.text = I18nUtil.message("default.apiPath.openRouter")
             } else {
                 cl.show(modelCard, "OLLAMA")
                 refreshModelsButton.isEnabled = true
@@ -423,26 +424,26 @@ class CodeReviewerConfigurable : Configurable {
             when {
                 name.isEmpty() -> {
                     Messages.showErrorDialog(
-                        "Template name is required. Please provide a unique name for your template.",
-                        "Missing Template Name"
+                        I18nUtil.message("error.missing.template.name"),
+                    I18nUtil.message("dialog.title.missingTemplateName")
                     )
                 }
                 template.isEmpty() -> {
                     Messages.showErrorDialog(
-                        "Template content is required. Please provide the template content.",
-                        "Missing Template Content"
+                        I18nUtil.message("error.missing.template.content"),
+                    I18nUtil.message("dialog.title.missingTemplateContent")
                     )
                 }
                 !template.contains(PromptTemplate.CODE_PLACEHOLDER) -> {
                     Messages.showErrorDialog(
-                        "Template must contain {code} placeholder where the code will be inserted.\n\nExample: \"Please review the following code: {code}\"",
-                        "Missing Code Placeholder"
+                        I18nUtil.message("error.missing.code.placeholder"),
+                    I18nUtil.message("dialog.title.missingCodePlaceholder")
                     )
                 }
                 settingsService.getAvailablePromptTemplates().any { it.name == name } -> {
                     Messages.showErrorDialog(
-                        "A template with name '$name' already exists. Please choose a different name.",
-                        "Duplicate Template Name"
+                        I18nUtil.message("error.duplicate.template.name", name),
+                    I18nUtil.message("dialog.title.duplicateTemplateName")
                     )
                 }
                 else -> {
@@ -452,8 +453,8 @@ class CodeReviewerConfigurable : Configurable {
                     promptTemplateCombo.selectedItem = newTemplate
                     
                     Messages.showInfoMessage(
-                        "Custom template '$name' has been added successfully.",
-                        "Template Added"
+                        I18nUtil.message("message.template.added", name),
+                    I18nUtil.message("dialog.title.templateAdded")
                     )
                 }
             }
@@ -464,8 +465,8 @@ class CodeReviewerConfigurable : Configurable {
         val selected = promptTemplateCombo.selectedItem as? PromptTemplate
         if (selected != null && !selected.isDefault) {
             val result = Messages.showYesNoDialog(
-                "Are you sure you want to remove the template '${selected.name}'?",
-                "Remove Template",
+                I18nUtil.message("message.confirm.remove.template", selected.name),
+                    I18nUtil.message("dialog.title.removeTemplate"),
                 Messages.getQuestionIcon()
             )
 
@@ -475,22 +476,22 @@ class CodeReviewerConfigurable : Configurable {
             }
         } else {
             Messages.showInfoMessage(
-                "Cannot remove default templates.",
-                "Remove Template"
+                I18nUtil.message("error.cannot.remove.default.template"),
+                    I18nUtil.message("dialog.title.removeTemplate")
             )
         }
     }
 
     private fun testConnection() {
             // Enforce API key when OpenRouter is selected
-            if ((providerCombo.selectedItem as? String) == "OpenRouter" && getApiKeyText().isBlank()) {
-                Messages.showErrorDialog("OpenRouter provider requires API Key.", "Missing API Key")
+            if ((providerCombo.selectedItem as? String) == I18nUtil.message("provider.openRouter") && getApiKeyText().isBlank()) {
+                Messages.showErrorDialog(I18nUtil.message("message.openRouterRequiresApiKey"), I18nUtil.message("dialog.title.missingApiKey"))
                 return
             }
         val testPanel = findTestPanel()
         val testResultArea = testPanel?.getClientProperty("testResultArea") as? JTextArea
 
-        testResultArea?.text = "Testing connection..."
+        testResultArea?.text = I18nUtil.message("test.connection.testing")
 
         try {
             ProgressManager.getInstance().runProcessWithProgressSynchronously({
@@ -519,11 +520,11 @@ class CodeReviewerConfigurable : Configurable {
                         return@runBlocking false
                     }
                     
-                    logger.info("开始执行连接测试...")
+                    logger.info(I18nUtil.message("log.startConnectionTest"))
                     val testResult = reviewService.testConnection(progressIndicator)
                     
                     if (progressIndicator?.isCanceled == true) {
-                        logger.info("用户在测试过程中取消了连接测试")
+                        logger.info(I18nUtil.message("log.userCancelledTest"))
                         return@runBlocking false
                     }
                     
@@ -534,25 +535,25 @@ class CodeReviewerConfigurable : Configurable {
 
                 SwingUtilities.invokeLater {
                     testResultArea?.text = if (progressIndicator?.isCanceled == true) {
-                        logger.info("配置界面显示: 连接测试已取消")
-                        "❌ Connection test was cancelled."
+                        logger.info(I18nUtil.message("log.uiDisplayCancelledTest"))
+                        I18nUtil.message("connection.test.cancelled.message")
                     } else if (result) {
                         logger.info("配置界面连接测试成功 - 总耗时: ${totalTime}ms")
-                        "✓ Connection successful! AI service is reachable."
+                        I18nUtil.message("connection.test.success.message")
                     } else {
                         logger.info("配置界面连接测试失败 - 总耗时: ${totalTime}ms")
-                        "✗ Connection failed. Please check your configuration."
+                        I18nUtil.message("connection.test.failed.message")
                     }
                 }
                 
                 logger.info("=== 配置界面连接测试结束 ===\n")
-            }, "Testing AI Service Connection", true, null)
+            }, I18nUtil.message("progress.title.testingConnection"), true, null)
                 } catch (e: Exception) {
             // Handle cancellation or other exceptions
             logger.error("配置界面连接测试发生异常 - 类型: ${e.javaClass.simpleName}, 消息: ${e.message}", e)
             
             SwingUtilities.invokeLater {
-                testResultArea?.text = "❌ Connection test was cancelled or failed."
+                testResultArea?.text = I18nUtil.message("connection.test.cancelled.message")
             }
             
             logger.info("=== 配置界面连接测试异常结束 ===\n")
@@ -586,8 +587,8 @@ class CodeReviewerConfigurable : Configurable {
     private fun getApiKeyText(): String = String(apiKeyField.password).trim()
 
     private fun getCurrentConfig(): AIModelConfig {
-        val provider = if ((providerCombo.selectedItem as? String) == "OpenRouter") Provider.OPENROUTER else Provider.OLLAMA
-        val modelName = if (provider == Provider.OLLAMA) (modelNameCombo.selectedItem as? String ?: "qwen3:8b") else (modelNameField.text.ifBlank { "qwen/qwen3-coder:free" })
+        val provider = if ((providerCombo.selectedItem as? String) == I18nUtil.message("provider.openRouter")) Provider.OPENROUTER else Provider.OLLAMA
+        val modelName = if (provider == Provider.OLLAMA) (modelNameCombo.selectedItem as? String ?: I18nUtil.message("default.model.qwen3")) else (modelNameField.text.ifBlank { I18nUtil.message("default.model.openRouter") })
         return AIModelConfig(
             modelName = modelName,
             endpoint = endpointField.text,
@@ -621,7 +622,7 @@ class CodeReviewerConfigurable : Configurable {
             // Validate API key when provider is OpenRouter
             val cfg = getCurrentConfig()
             if (cfg.provider == Provider.OPENROUTER && cfg.apiKey.isBlank()) {
-                Messages.showErrorDialog("OpenRouter provider requires API Key.", "Configuration Error")
+                Messages.showErrorDialog(I18nUtil.message("message.openRouterRequiresApiKey"), I18nUtil.message("dialog.title.configurationError"))
                 return
             }
         val config = getCurrentConfig()
@@ -660,8 +661,8 @@ class CodeReviewerConfigurable : Configurable {
             updatePromptTemplateCombo()
         } else {
             Messages.showErrorDialog(
-                "Invalid configuration. Please check all fields.",
-                "Configuration Error"
+                I18nUtil.message("message.invalidConfiguration"),
+                I18nUtil.message("dialog.title.configurationError")
             )
         }
     }
@@ -672,7 +673,7 @@ class CodeReviewerConfigurable : Configurable {
 
     private fun refreshModelList(preselectedModel: String? = null) {
         // Provider guard at call-time too
-        val currentProviderIsOllamaAtStart = (providerCombo.selectedItem as? String) != "OpenRouter"
+        val currentProviderIsOllamaAtStart = (providerCombo.selectedItem as? String) != I18nUtil.message("provider.openRouter")
         if (!currentProviderIsOllamaAtStart) {
             logger.info("刷新请求被忽略：当前提供方为 OPENROUTER，未触发模型刷新")
             return
@@ -683,7 +684,7 @@ class CodeReviewerConfigurable : Configurable {
         logger.info("=== 配置界面刷新模型列表开始 (gen=$gen) ===")
 
         refreshModelsButton.isEnabled = false
-        refreshModelsButton.text = "Loading..."
+        refreshModelsButton.text = I18nUtil.message("button.loading")
 
         ApplicationManager.getApplication().executeOnPooledThread {
             val startTime = System.currentTimeMillis()
@@ -713,7 +714,7 @@ class CodeReviewerConfigurable : Configurable {
                         return@invokeLater
                     }
                     // Ensure provider still OLLAMA before applying
-                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != "OpenRouter"
+                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != I18nUtil.message("provider.openRouter")
                     if (!currentProviderIsOllama) {
                         logger.info("刷新结果返回时提供方已切换为 OPENROUTER，跳过模型下拉更新")
                     } else {
@@ -765,7 +766,7 @@ class CodeReviewerConfigurable : Configurable {
                         }
 
                         refreshModelsButton.isEnabled = true
-                        refreshModelsButton.text = "Refresh"
+                        refreshModelsButton.text = I18nUtil.message("button.refresh")
                         logger.info("模型下拉框更新完成 (gen=$gen)")
                     }
                     latestAppliedGeneration = gen
@@ -782,14 +783,21 @@ class CodeReviewerConfigurable : Configurable {
                 
                 SwingUtilities.invokeLater {
                     // Only apply fallback if still on OLLAMA
-                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != "OpenRouter"
+                    val currentProviderIsOllama = (providerCombo.selectedItem as? String) != I18nUtil.message("provider.openRouter")
                     if (!currentProviderIsOllama) {
                         logger.info("刷新异常时提供方已为 OPENROUTER，跳过默认模型回退更新")
                     } else {
                         // Fallback to default models
                         val defaultModels = listOf(
-                            "qwen3:8b", "qwen:7b", "qwen:14b", "llama3:8b", "llama3:70b",
-                            "codellama:7b", "codellama:13b", "mistral:7b", "deepseek-coder:6.7b"
+                            I18nUtil.message("default.model.qwen3"),
+                            I18nUtil.message("default.model.qwen"),
+                            I18nUtil.message("default.model.qwenLarge"),
+                            I18nUtil.message("default.model.llama3"),
+                            I18nUtil.message("default.model.llama3Large"),
+                            I18nUtil.message("default.model.codeLlama"),
+                            I18nUtil.message("default.model.codeLlamaLarge"),
+                            I18nUtil.message("default.model.mistral"),
+                            I18nUtil.message("default.model.deepseek")
                         )
 
                         val currentSelection = preselectedModel ?: (modelNameCombo.selectedItem as? String)
@@ -803,12 +811,12 @@ class CodeReviewerConfigurable : Configurable {
                             modelNameCombo.selectedItem = currentSelection
                             logger.info("使用默认模型列表，恢复选择: $currentSelection")
                         } else {
-                            modelNameCombo.selectedItem = "qwen3:8b"
-                            logger.info("使用默认模型列表，设置默认选择: qwen3:8b")
+                            modelNameCombo.selectedItem = I18nUtil.message("default.model.qwen3")
+                            logger.info("使用默认模型列表，设置默认选择: ${I18nUtil.message("default.model.qwen3")}")
                         }
 
                         refreshModelsButton.isEnabled = true
-                        refreshModelsButton.text = "Refresh"
+                        refreshModelsButton.text = I18nUtil.message("button.refresh")
                         
                         logger.info("已降级到默认模型列表: ${defaultModels.joinToString(", ")}")
                     }
@@ -826,29 +834,29 @@ class CodeReviewerConfigurable : Configurable {
      * Reset all configuration fields to their default values
      */
     private fun resetToDefaults() {
-            providerCombo.selectedItem = "Ollama"
+            providerCombo.selectedItem = I18nUtil.message("provider.ollama")
             apiKeyField.text = ""
             val cl = modelCard.layout as java.awt.CardLayout
             cl.show(modelCard, "OLLAMA")
             onProviderChanged()
         val result = Messages.showYesNoDialog(
-            "Are you sure you want to reset all settings to their default values?\nThis action cannot be undone.",
-            "Reset to Defaults",
+            I18nUtil.message("message.resetConfirmation"),
+            I18nUtil.message("dialog.title.resetToDefaults"),
             Messages.getQuestionIcon()
         )
 
         if (result == Messages.YES) {
             // Reset AI configuration to defaults
-            modelNameCombo.selectedItem = "qwen3:8b"
-            endpointField.text = "http://192.168.66.181:11434"
-            apiPathField.text = "/api/generate"
+            modelNameCombo.selectedItem = I18nUtil.message("default.model.qwen3")
+            endpointField.text = I18nUtil.message("default.endpoint.ollama")
+            apiPathField.text = I18nUtil.message("default.apiPath.ollama")
             temperatureSpinner.value = 0.7
             maxTokensSpinner.value = 2048
             timeoutSpinner.value = 120000 // 更新默认超时时间
             retryCountSpinner.value = 3
             
             // Reset result file path
-            reviewResultFilePathField.text = "ai-code-review.md"
+            reviewResultFilePathField.text = I18nUtil.message("default.resultFilePath")
 
             // Reset prompt template selection
             val defaultTemplate = settingsService.getAvailablePromptTemplates()
@@ -861,15 +869,15 @@ class CodeReviewerConfigurable : Configurable {
             }
 
             Messages.showInfoMessage(
-                "All settings have been reset to their default values.",
-                "Reset Complete"
+                I18nUtil.message("message.resetComplete"),
+                I18nUtil.message("dialog.title.resetComplete")
             )
         }
     }
 
     private fun onProviderChanged() {
         val selected = providerCombo.selectedItem as? String
-        val isOpenRouter = selected == "OpenRouter"
+        val isOpenRouter = selected == I18nUtil.message("provider.openRouter")
 
         // Switch model input card
         val cl = modelCard.layout as java.awt.CardLayout
@@ -877,15 +885,19 @@ class CodeReviewerConfigurable : Configurable {
             cl.show(modelCard, "OPENROUTER")
             // Default model for OpenRouter if empty
             if (modelNameField.text.isBlank()) {
-                modelNameField.text = "qwen/qwen3-coder:free"
+                modelNameField.text = I18nUtil.message("default.model.openRouter")
             }
         } else {
             cl.show(modelCard, "OLLAMA")
             // Ensure model list is available; leave selection as-is
             if ((modelNameCombo.model.size == 0)) {
                 // Populate with a minimal fallback list; real refresh happens via button
-                listOf("qwen3:8b", "llama3:8b", "mistral:7b").forEach { modelNameCombo.addItem(it) }
-                modelNameCombo.selectedItem = "qwen3:8b"
+                listOf(
+                    I18nUtil.message("default.model.qwen3"),
+                    I18nUtil.message("default.model.llama3"),
+                    I18nUtil.message("default.model.mistral")
+                ).forEach { modelNameCombo.addItem(it) }
+                modelNameCombo.selectedItem = I18nUtil.message("default.model.qwen3")
             }
         }
 
@@ -898,17 +910,17 @@ class CodeReviewerConfigurable : Configurable {
         // Adjust endpoint and api path defaults if fields look incompatible/blank
         if (isOpenRouter) {
             if (endpointField.text.isBlank() || endpointField.text.startsWith("http://")) {
-                endpointField.text = "https://openrouter.ai"
+                endpointField.text = I18nUtil.message("default.endpoint.openRouter")
             }
             if (apiPathField.text.isBlank() || apiPathField.text == "/api/generate") {
-                apiPathField.text = "/api/v1/chat/completions"
+                apiPathField.text = I18nUtil.message("default.apiPath.openRouter")
             }
         } else {
             if (endpointField.text.isBlank() || endpointField.text.contains("openrouter", ignoreCase = true)) {
-                endpointField.text = "http://192.168.66.181:11434"
+                endpointField.text = I18nUtil.message("default.endpoint.ollama")
             }
             if (apiPathField.text.isBlank() || apiPathField.text.contains("chat/completions", ignoreCase = true)) {
-                apiPathField.text = "/api/generate"
+                apiPathField.text = I18nUtil.message("default.apiPath.ollama")
             }
         }
     }
@@ -920,29 +932,29 @@ class CodeReviewerConfigurable : Configurable {
 private class AddTemplateDialog : DialogWrapper(true) {
     
     private val nameField = JBTextField(20).apply {
-        toolTipText = "Enter a unique name for your custom template"
+        toolTipText = I18nUtil.message("dialog.template.name.tooltip")
     }
     
     private val descField = JBTextField(30).apply {
-        toolTipText = "Optional: Brief description of what this template does"
+        toolTipText = I18nUtil.message("dialog.template.description.tooltip")
     }
     
     private val templateArea = JTextArea(12, 60).apply {
         lineWrap = true
         wrapStyleWord = true
-        toolTipText = "Template content must include {code} placeholder where the code will be inserted"
-        text = """请对以下代码进行评审：
+        toolTipText = I18nUtil.message("dialog.template.content.tooltip")
+        text = """${I18nUtil.message("default.template.prompt")}
 
-## 📝 评审总结
-[简短总结]
+## ${I18nUtil.message("default.template.summary")}
+${I18nUtil.message("default.template.summary.placeholder")}
 
-## 🔍 发现的问题
-[列出问题或写"未发现明显问题"]
+## ${I18nUtil.message("default.template.issues")}
+${I18nUtil.message("default.template.issues.placeholder")}
 
-## 💡 优化建议
-[具体建议或写"代码质量良好"]
+## ${I18nUtil.message("default.template.suggestions")}
+${I18nUtil.message("default.template.suggestions.placeholder")}
 
-代码内容：
+${I18nUtil.message("default.template.code.content")}
 {code}"""
     }
     
@@ -951,7 +963,7 @@ private class AddTemplateDialog : DialogWrapper(true) {
     val templateContent: String get() = templateArea.text
     
     init {
-        title = "Add Custom Template"
+        title = I18nUtil.message("dialog.title.addCustomTemplate")
         init()
     }
     
@@ -961,9 +973,9 @@ private class AddTemplateDialog : DialogWrapper(true) {
         }
 
         val panel = FormBuilder.createFormBuilder()
-            .addLabeledComponent("Template Name*:", nameField)
-            .addLabeledComponent("Description:", descField)
-            .addLabeledComponent("Template Content*:", scrollPane)
+            .addLabeledComponent(I18nUtil.message("dialog.template.name.label"), nameField)
+            .addLabeledComponent(I18nUtil.message("dialog.template.description.label"), descField)
+            .addLabeledComponent(I18nUtil.message("dialog.template.content.label"), scrollPane)
             .panel
 
         val instructionLabel = JLabel("<html><font color='gray'><i>* Required fields. Template must contain {code} placeholder.</i></font></html>")

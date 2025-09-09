@@ -1,6 +1,7 @@
 package com.etrx.codereviewer.ui
 
 import com.etrx.codereviewer.model.ReviewResult
+import com.etrx.codereviewer.util.I18nUtil
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
@@ -69,7 +70,7 @@ class MarkdownViewer {
                 mainPanel.add(scrollPane, BorderLayout.CENTER)
             }
             else -> {
-                val fallbackLabel = JLabel("Markdown viewer not available", SwingConstants.CENTER)
+                val fallbackLabel = JLabel(I18nUtil.message("markdown.viewer.unavailable"), SwingConstants.CENTER)
                 mainPanel.add(fallbackLabel, BorderLayout.CENTER)
             }
         }
@@ -165,21 +166,21 @@ class MarkdownViewer {
     
     private fun showWelcomeMessage() {
         val welcomeMarkdown = """
-            # Code Review Results
+            # ${I18nUtil.message("markdown.viewer.title")}
             
-            Select a review from the list to view the results here.
+            ${I18nUtil.message("markdown.viewer.select.review")}
             
-            ## How to use:
-            1. Make code changes in your project
-            2. Use **Ctrl+Alt+R** to review selected changes
-            3. Use **Ctrl+Alt+Shift+R** to review all changes
-            4. Select code in editor and use context menu to review specific code
+            ## ${I18nUtil.message("markdown.viewer.how.to.use")}
+            1. ${I18nUtil.message("markdown.viewer.how.to.use.step1")}
+            2. ${I18nUtil.message("markdown.viewer.how.to.use.step2")}
+            3. ${I18nUtil.message("markdown.viewer.how.to.use.step3")}
+            4. ${I18nUtil.message("markdown.viewer.how.to.use.step4")}
             
-            ## Features:
-            - AI-powered code analysis
-            - Customizable review templates
-            - Support for multiple AI models
-            - Markdown formatted results
+            ## ${I18nUtil.message("markdown.viewer.features")}
+            - ${I18nUtil.message("markdown.viewer.features.ai")}
+            - ${I18nUtil.message("markdown.viewer.features.customizable")}
+            - ${I18nUtil.message("markdown.viewer.features.multiple.models")}
+            - ${I18nUtil.message("markdown.viewer.features.markdown")}
         """.trimIndent()
         
         val htmlContent = convertMarkdownToHtml(welcomeMarkdown)

@@ -144,19 +144,6 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         }
         logger.info("[$actionName] VcsDataKeys.SELECTED_CHANGES 为空，尝试回退方法")
 
-        // 方法3：CHANGES —— 高亮选中的变更
-        val highlightedChanges: Array<Change>? = e.getData(VcsDataKeys.CHANGES)
-        if (highlightedChanges != null && highlightedChanges.isNotEmpty()) {
-            val changes = highlightedChanges.toList()
-            logger.info("[$actionName] 从 VcsDataKeys.CHANGES 获取到 ${changes.size} 个选中的变更")
-            changes.forEachIndexed { index, change ->
-                logger.info("[$actionName]   选中变更 ${index + 1}: ${change.virtualFile?.path ?: "未知路径"}")
-            }
-            logger.info("[$actionName] === 获取选中变更完成(方法3: CHANGES) ===")
-            return changes
-        }
-        logger.info("[$actionName] VcsDataKeys.CHANGES 为空，尝试回退方法")
-
         // 方法3.5：尝试通过 DataKey 名称直接读取 INCLUDED_CHANGES（Commit 面板中被勾选的变更）
         try {
             val includedKey1: DataKey<Array<Change>> = DataKey.create("INCLUDED_CHANGES")

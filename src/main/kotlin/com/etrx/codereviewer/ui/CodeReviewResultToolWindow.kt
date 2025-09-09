@@ -1,6 +1,7 @@
 package com.etrx.codereviewer.ui
 
 import com.etrx.codereviewer.model.ReviewResult
+import com.etrx.codereviewer.util.I18nUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
@@ -29,7 +30,7 @@ class CodeReviewResultToolWindow(private val project: Project) {
     private val reviewListModel = DefaultListModel<ReviewResult>()
     private val reviewList = JBList(reviewListModel)
     private val markdownViewer = MarkdownViewer()
-    private val emptyLabel = JLabel("No review results to display", SwingConstants.CENTER)
+    private val emptyLabel = JLabel(I18nUtil.message("toolWindow.no.results"), SwingConstants.CENTER)
     
     init {
         setupUI()

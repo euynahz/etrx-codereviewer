@@ -1,5 +1,6 @@
 package com.etrx.codereviewer.action
 
+import com.etrx.codereviewer.util.I18nUtil
 import com.etrx.codereviewer.util.VcsChangeExtractor
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -62,8 +63,8 @@ class ReviewSelectedChangesAction : BaseCodeReviewAction() {
             logger.info("没有代码变更需要评审，结束操作")
             Messages.showInfoMessage(
                 project,
-                "没有找到可评审的代码变更。",
-                "代码评审"
+                I18nUtil.message("message.noCodeChanges"),
+                I18nUtil.message("dialog.title.codeReview")
             )
         }
         

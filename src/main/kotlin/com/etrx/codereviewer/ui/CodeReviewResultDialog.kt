@@ -1,6 +1,7 @@
 package com.etrx.codereviewer.ui
 
 import com.etrx.codereviewer.model.ReviewResult
+import com.etrx.codereviewer.util.I18nUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBScrollPane
@@ -29,8 +30,8 @@ class CodeReviewResultDialog(
         logger.info("Review Status: ${result.status}")
         logger.info("Review Content Length: ${result.reviewContent.length}")
         
-        title = "AI Code Review Results - ${result.getDisplayTitle()}"
-        setOKButtonText("Close")
+        title = "${I18nUtil.message("dialog.title.codeReviewResults")} - ${result.getDisplayTitle()}"
+        setOKButtonText(I18nUtil.message("button.close"))
         
         // Display the result immediately
         logger.info("开始显示评审结果...")
@@ -61,7 +62,7 @@ class CodeReviewResultDialog(
     // Removed createHeaderPanel method as header info is no longer needed
 
     override fun createActions(): Array<Action> {
-        val copyAction = object : AbstractAction("Copy Raw Content") {
+        val copyAction = object : AbstractAction(I18nUtil.message("button.copyRawContent")) {
             override fun actionPerformed(e: java.awt.event.ActionEvent?) {
                 val rawContent = result.getMarkdownContent()
                 val selection = StringSelection(rawContent)

@@ -2,6 +2,7 @@ package com.example.plugin.settings
 
 import com.etrx.codereviewer.model.PromptTemplate
 import com.etrx.codereviewer.service.CodeReviewerSettingsService
+import com.etrx.codereviewer.util.I18nUtil
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.ToolbarDecorator
@@ -37,7 +38,7 @@ class TemplateSettingsConfigurable : SearchableConfigurable {
 
     override fun getId(): String = "com.etrx.codereviewer.settings.promptTemplates"
 
-    override fun getDisplayName(): String = "Prompt Templates"
+    override fun getDisplayName(): String = I18nUtil.message("template.settings.displayName")
 
     override fun createComponent(): JComponent {
         if (component == null) {
@@ -100,16 +101,16 @@ class TemplateSettingsConfigurable : SearchableConfigurable {
             // Should be disabled already, but double-guard
             Messages.showInfoMessage(
                 templateList,
-                "Built-in templates cannot be removed.",
-                "Remove Template"
+                I18nUtil.message("message.cannotRemoveDefaultTemplate"),
+                I18nUtil.message("dialog.title.removeTemplate")
             )
             return
         }
 
         val result = Messages.showYesNoDialog(
             templateList,
-            "Are you sure you want to remove the template \"${selected.name}\"?",
-            "Remove Template",
+            I18nUtil.message("message.removeTemplateConfirmation", selected.name),
+            I18nUtil.message("dialog.title.removeTemplate"),
             null
         )
         if (result != Messages.YES) return
