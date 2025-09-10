@@ -1,24 +1,29 @@
 <idea-plugin>
     <id>com.etrx.codereviewer</id>
     <name>ETRX Code Reviewer</name>
+    <version>1.0.0</version>
     <vendor email="support@etrx.com" url="https://etrx.com">ETRX</vendor>
 
     <description><![CDATA[
-    AI-powered code review plugin for JetBrains IDEs.
-    
-    Features:
-
-    - AI code review with customizable prompts
-
-    - Support for Ollama models (default: qwen3:8b) and OpenRouter
-
-    - Markdown result display
-
-    - Integration with VCS commit panel
-
-    - Configurable AI model settings
-
+      <p>AI-powered code review plugin for JetBrains IDEs.</p>
+      <h2>Features</h2>
+      <ul>
+        <li>AI code review with customizable prompts</li>
+        <li>Support for Ollama models (default: <code>qwen3:8b</code>) and OpenRouter</li>
+        <li>Markdown result display</li>
+        <li>Integration with VCS commit panel</li>
+        <li>Configurable AI model settings</li>
+      </ul>
     ]]></description>
+    <change-notes><![CDATA[
+      <p>Initial release.</p>
+      <ul>
+        <li>AI-assisted review for selected code, all changes, and VCS commit panel integration</li>
+        <li>Ollama and OpenRouter support with configurable model settings</li>
+        <li>Markdown result rendering</li>
+      </ul>
+    ]]></change-notes>
+    <idea-version since-build="231"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
