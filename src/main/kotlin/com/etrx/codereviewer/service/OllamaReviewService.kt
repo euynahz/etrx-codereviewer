@@ -66,11 +66,13 @@ class OllamaReviewService : AIReviewService {
             progressIndicator?.fraction = 0.1
             
             val codeContent = buildCodeContent(codeChanges)
-            var fullPrompt = """
-# ${templateName}
+            val lang = settingsService.getResponseLanguage().ifBlank { "中文" }
+            val enforce = "**！！！请务必使用${lang}回复，所有内容都必须是用${lang}！！！**。"
+            val fullPrompt = """
+# $templateName
 ## !!!重要系统要求!!!
-1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
-2. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+1. $enforce
+2. $enforce
 3. **不要返回思考过程。**
 4. **遵循输出格式要求。不要使用```markdown``` 代码块包裹返回内容，直接返回文本**
                 
@@ -81,8 +83,8 @@ class OllamaReviewService : AIReviewService {
 ${prompt.replace(PromptTemplate.CODE_PLACEHOLDER, codeContent)}
 
 ## !!!重要系统要求!!!
-1. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
-2. **！！！请务必使用中文回复，所有内容都必须是中文！！！**。
+1. $enforce
+2. $enforce
 3. **不要返回思考过程。**
 4. **遵循输出格式要求。不要使用```markdown``` 代码块包裹返回内容，直接返回文本**
 """

@@ -61,6 +61,9 @@ class CodeReviewerConfigurable : Configurable {
     // Review Result File Configuration
     private val reviewResultFilePathField = JBTextField()
 
+    // Response Language Configuration
+    private val responseLanguageField = JBTextField()
+
     // API Key row controls for conditional visibility
     private val apiKeyLabel = JBLabel(I18nUtil.message("label.apiKey"))
     private val apiKeyPanel = JPanel(BorderLayout())
@@ -214,6 +217,17 @@ class CodeReviewerConfigurable : Configurable {
             add(retryResetBtn, BorderLayout.EAST)
         }
 
+        // Setup response language panel with reset button
+        val responseLanguagePanel = JPanel(BorderLayout()).apply {
+            add(responseLanguageField, BorderLayout.CENTER)
+            val langResetBtn = JButton(I18nUtil.message("button.default")).apply {
+                addActionListener {
+                    responseLanguageField.text = I18nUtil.message("default.responseLanguage")
+                }
+            }
+            add(langResetBtn, BorderLayout.EAST)
+        }
+
         // Setup reset button
         resetToDefaultsButton.addActionListener {
             resetToDefaults()
@@ -239,6 +253,7 @@ class CodeReviewerConfigurable : Configurable {
                 .addLabeledComponent(JBLabel(I18nUtil.message("label.maxTokens")), maxTokensPanel)
                 .addLabeledComponent(JBLabel(I18nUtil.message("label.timeout")), timeoutPanel)
                 .addLabeledComponent(JBLabel(I18nUtil.message("label.retryCount")), retryPanel)
+                .addLabeledComponent(JBLabel(I18nUtil.message("label.responseLanguage")), responseLanguagePanel)
                 .addComponent(resetPanel)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -361,6 +376,9 @@ class CodeReviewerConfigurable : Configurable {
         
         // Set result file path
         reviewResultFilePathField.text = settingsService.getReviewResultFilePath()
+
+        // Set response language
+        responseLanguageField.text = settingsService.getResponseLanguage()
 
         // Initialize model combo with saved selection (only for Ollama)
         if (config.provider == Provider.OLLAMA) {
@@ -615,7 +633,8 @@ class CodeReviewerConfigurable : Configurable {
         return currentConfig != savedConfig ||
                 selectedTemplate?.name != savedTemplate.name ||
                 customPromptArea.text != selectedTemplate?.template ||
-                currentFilePath != savedFilePath
+                currentFilePath != savedFilePath ||
+                responseLanguageField.text.trim() != settingsService.getResponseLanguage().trim()
     }
 
     override fun apply() {
@@ -665,6 +684,9 @@ class CodeReviewerConfigurable : Configurable {
                 I18nUtil.message("dialog.title.configurationError")
             )
         }
+        // Save response language regardless of model config validity, but after validations above
+        val lang = responseLanguageField.text.trim()
+        settingsService.setResponseLanguage(lang)
     }
 
     override fun reset() {
@@ -857,6 +879,9 @@ class CodeReviewerConfigurable : Configurable {
             
             // Reset result file path
             reviewResultFilePathField.text = I18nUtil.message("default.resultFilePath")
+
+            // Reset response language
+            responseLanguageField.text = I18nUtil.message("default.responseLanguage")
 
             // Reset prompt template selection
             val defaultTemplate = settingsService.getAvailablePromptTemplates()

@@ -31,7 +31,9 @@ data class CodeReviewerState(
     var defaultTemplateOverrides: MutableList<PromptTemplateData> = mutableListOf(),
     var reviewResultFilePath: String = ".ai-codereview",
     // 记录最近一次选择的 Ollama 模型，用于设置界面回显
-    var lastSelectedOllamaModel: String = ""
+    var lastSelectedOllamaModel: String = "",
+    // 用户期望AI回复语种，默认中文
+    var responseLanguage: String = "中文"
 )
 
 /**
@@ -102,6 +104,9 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         }
         if (state.reviewResultFilePath.isBlank()) {
             state.reviewResultFilePath = "ai-code-review.md"
+        }
+        if (state.responseLanguage.isBlank()) {
+            state.responseLanguage = "中文"
         }
         // Only reset template selection if it's truly blank or invalid
         if (state.selectedPromptTemplate.isBlank()) {
@@ -328,6 +333,16 @@ class CodeReviewerSettingsService : PersistentStateComponent<CodeReviewerState> 
         logger.info("设置评审结果文件路径: 从 '${state.reviewResultFilePath}' 切换到 '$filePath'")
         state.reviewResultFilePath = filePath
         logger.info("文件路径设置完成: ${state.reviewResultFilePath}")
+    }
+
+    fun getResponseLanguage(): String {
+        return state.responseLanguage.ifBlank { "中文" }
+    }
+
+    fun setResponseLanguage(language: String) {
+        val lang = language.trim().ifBlank { "中文" }
+        logger.info("设置回复语种: 从 '${state.responseLanguage}' 切换到 '$lang'")
+        state.responseLanguage = lang
     }
 
     
