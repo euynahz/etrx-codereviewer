@@ -11,7 +11,6 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
@@ -144,26 +143,8 @@ abstract class BaseCodeReviewAction : AnAction(), DumbAware {
         }
         logger.info("[$actionName] VcsDataKeys.SELECTED_CHANGES 为空，尝试回退方法")
 
-        // 方法3.5：尝试通过 DataKey 名称直接读取 INCLUDED_CHANGES（Commit 面板中被勾选的变更）
-        try {
-            val includedKey1: DataKey<Array<Change>> = DataKey.create("INCLUDED_CHANGES")
-            val includedChanges1 = e.getData(includedKey1)
-            if (includedChanges1 != null && includedChanges1.isNotEmpty()) {
-                val changes = includedChanges1.toList()
-                logger.info("[$actionName] 从 DataKey('INCLUDED_CHANGES') 获取到 ${changes.size} 个被勾选的变更")
-                return changes
-            }
-            // 某些平台可能使用命名空间前缀
-            val includedKey2: DataKey<Array<Change>> = DataKey.create("Vcs.IncludedChanges")
-            val includedChanges2 = e.getData(includedKey2)
-            if (includedChanges2 != null && includedChanges2.isNotEmpty()) {
-                val changes = includedChanges2.toList()
-                logger.info("[$actionName] 从 DataKey('Vcs.IncludedChanges') 获取到 ${changes.size} 个被勾选的变更")
-                return changes
-            }
-        } catch (t: Throwable) {
-            logger.info("[$actionName] 通过 DataKey 名称读取 INCLUDED_CHANGES 失败: ${t.message}")
-        }
+        // 方法3.5：出于兼容性考虑，移除通过 DataKey.create(String) 的反射式读取，
+        // 避免在新平台版本上触发 DataKey.Companion 的二进制不兼容问题。
 
         // 方法4：Commit 面板当前清单中被包含的变更（不依赖面板引用；需结合包含模型进行过滤）
         val projectRef = e.project
