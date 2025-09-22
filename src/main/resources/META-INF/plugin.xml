@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.etrx.codereviewer</id>
     <name>ETRX Code Reviewer</name>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <vendor email="support@etrx.com" url="https://etrx.com">ETRX</vendor>
 
     <description><![CDATA[
@@ -16,7 +16,11 @@
       </ul>
     ]]></description>
     <change-notes><![CDATA[
-      <p>Initial release.</p>
+      <h2>1.0.1 - Fixes</h2>
+      <ul>
+        <li>Compatibility Update: Updated the since-build to 231 and removed the upper bound (compatible with 231 and all subsequent platform versions).</li>
+      </ul>
+      <h2>1.0.0 - Initial release</h2>
       <ul>
         <li>AI-assisted review for selected code, all changes, and VCS commit panel integration</li>
         <li>Ollama and OpenRouter support with configurable model settings</li>
