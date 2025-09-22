@@ -47,6 +47,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("231")
+        untilBuild.set("253.*")
     }
 
     // Local compatibility verification using the IntelliJ Plugin Verifier

@@ -18,7 +18,7 @@
     <change-notes><![CDATA[
       <h2>1.0.1 - Fixes</h2>
       <ul>
-        <li>Compatibility Update: Updated the since-build to 231 and removed the upper bound (compatible with 231 and all subsequent platform versions).</li>
+        <li>Compatibility update.</li>
       </ul>
       <h2>1.0.0 - Initial release</h2>
       <ul>
